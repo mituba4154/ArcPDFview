@@ -98,16 +98,14 @@ jobs:
         shell: pwsh
         run: |
           $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
-          wix build installer/ArcPDFview.wxs -arch x64 -bindpath PublishDir=publish/win-x64 -out publish/win-x64/ArcPDFview-win-x64.msi
+          wix build installer/ArcPDFview.wxs -arch x64 -bindpath PublishDir=publish/${{ matrix.rid }} -out publish/${{ matrix.rid }}/ArcPDFview-${{ matrix.rid }}.msi
 
       - name: Upload artifact (Windows)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: ArcPDFview-${{ matrix.rid }}
-          path: |
-            ./publish/${{ matrix.rid }}
-            ./publish/win-x64/ArcPDFview-win-x64.msi
+          path: ./publish/${{ matrix.rid }}
 
       - name: Upload artifact (Linux)
         if: runner.os == 'Linux'

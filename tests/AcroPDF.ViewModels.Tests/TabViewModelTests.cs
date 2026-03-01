@@ -111,8 +111,10 @@ public class TabViewModelTests
         using var tab = new TabViewModel(CreateDocument(1));
 
         tab.RotationDegrees = 450;
-
         Assert.Equal(450, tab.RotationDegrees);
+
+        tab.RotationDegrees = -90;
+        Assert.Equal(-90, tab.RotationDegrees);
     }
 
     [Fact]

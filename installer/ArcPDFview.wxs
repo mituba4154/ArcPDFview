@@ -62,10 +62,10 @@
 
   <Fragment>
     <Component Id="PdfAssociationComponent" Directory="INSTALLFOLDER">
-      <RegistryValue Root="HKLM" Key="Software\Classes\.pdf" Value="ArcPDFview.PDF" Type="string" />
-      <RegistryValue Root="HKLM" Key="Software\Classes\ArcPDFview.PDF" Value="ArcPDFview PDF Document" Type="string" />
-      <RegistryValue Root="HKLM" Key="Software\Classes\ArcPDFview.PDF\DefaultIcon" Value="[#AppExecutable],0" Type="string" />
-      <RegistryValue Root="HKLM" Key="Software\Classes\ArcPDFview.PDF\shell\open\command" Value="&quot;[#AppExecutable]&quot; &quot;%1&quot;" Type="string" KeyPath="yes" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\.pdf\OpenWithProgids" Name="ArcPDFview.PDF" Value="" Type="string" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\ArcPDFview.PDF" Value="ArcPDFview PDF Document" Type="string" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\ArcPDFview.PDF\DefaultIcon" Value="[#AppExecutable],0" Type="string" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\ArcPDFview.PDF\shell\open\command" Value="&quot;[#AppExecutable]&quot; &quot;%1&quot;" Type="string" KeyPath="yes" />
     </Component>
   </Fragment>
 </Wix>
