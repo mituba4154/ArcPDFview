@@ -312,23 +312,23 @@ PDFium 座標系:
 | 3-10 | テキスト入力・編集 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
 | 3-11 | 著者名・日時の記録 | ✅ | 2026-03-01 完了。`src/AcroPDF.Core/Models/Annotation.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
 | 3-12 | 付箋の開閉 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
-| 3-13 | フリーハンド描画モード | ⬜ | |
-| 3-14 | ストローク記録 | ⬜ | |
-| 3-15 | 色・太さの設定 UI | ⬜ | |
-| 3-16 | 矩形の描画 | ⬜ | |
-| 3-17 | 楕円の描画 | ⬜ | |
-| 3-18 | 矢印の描画 | ⬜ | |
-| 3-19 | 線の描画 | ⬜ | |
-| 3-20 | ストロークカラー・塗り・太さ設定 UI | ⬜ | |
-| 3-21 | プリセットスタンプ | ⬜ | |
-| 3-22 | 注釈パネル UI（右サイドバー） | ⬜ | wireframe 参照 |
-| 3-23 | カラーコード別アイコン | ⬜ | |
-| 3-24 | クリックで注釈へジャンプ | ⬜ | |
-| 3-25 | 注釈の削除 | ⬜ | |
-| 3-26 | FDF エクスポート | ⬜ | |
-| 3-27 | FDF インポート | ⬜ | |
-| 3-28 | フローティング注釈ツールバー | ⬜ | wireframe 参照 |
-| 3-29 | ツールバーから注釈種別を選択 | ⬜ | |
+| 3-13 | フリーハンド描画モード | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 3-14 | ストローク記録 | ✅ | 2026-03-01 完了。`src/AcroPDF.Core/Models/FreehandAnnotation.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 3-15 | 色・太さの設定 UI | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 3-16 | 矩形の描画 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Controls/PdfPageControl.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 3-17 | 楕円の描画 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Controls/PdfPageControl.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 3-18 | 矢印の描画 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Controls/PdfPageControl.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 3-19 | 線の描画 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Controls/PdfPageControl.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 3-20 | ストロークカラー・塗り・太さ設定 UI | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 3-21 | プリセットスタンプ | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 3-22 | 注釈パネル UI（右サイドバー） | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 3-23 | カラーコード別アイコン | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 3-24 | クリックで注釈へジャンプ | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 3-25 | 注釈の削除 | ✅ | 2026-03-01 完了。`src/AcroPDF.Core/Models/PdfDocument.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 3-26 | FDF エクスポート | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/Interfaces/IAnnotationService.cs`、`src/AcroPDF.Services/AnnotationService.cs` |
+| 3-27 | FDF インポート | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/Interfaces/IAnnotationService.cs`、`src/AcroPDF.Services/AnnotationService.cs` |
+| 3-28 | フローティング注釈ツールバー | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 3-29 | ツールバーから注釈種別を選択 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
 
 **Phase 3 完了チェックリスト:**
 - [ ] ハイライト・コメント・手書きが追加できる

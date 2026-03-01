@@ -2,6 +2,7 @@
 
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 using AcroPDF.Core.Models;
 using AcroPDF.Services.Interfaces;
 
@@ -18,6 +19,8 @@ public sealed class AnnotationService : IAnnotationService
     private const int AnnotSubtypeStrikeOut = 13;
     private const int AnnotColorTypeNormal = 0;
     private const int SaveFlagNoIncremental = 1;
+    private const string DefaultStrokeColorHex = "#ff0000";
+    private const double DefaultStrokeWidth = 2d;
     private const uint CommentColorR = 48;
     private const uint CommentColorG = 112;
     private const uint CommentColorB = 255;
@@ -119,6 +122,63 @@ public sealed class AnnotationService : IAnnotationService
     }
 
     /// <inheritdoc />
+    public Task ExportAsFdfAsync(PdfDocument document, string outputPath, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
+
+        return Task.Run(
+            () =>
+            {
+                ct.ThrowIfCancellationRequested();
+                var directory = Path.GetDirectoryName(outputPath);
+                if (!string.IsNullOrWhiteSpace(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                var payload = new FdfPayload
+                {
+                    FilePath = document.FilePath,
+                    Annotations = document.Annotations.Select(ToFdfRecord).ToArray()
+                };
+                var json = JsonSerializer.Serialize(payload, FdfJsonOptions);
+                File.WriteAllText(outputPath, json, Encoding.UTF8);
+            },
+            ct);
+    }
+
+    /// <inheritdoc />
+    public Task ImportFdfAsync(PdfDocument document, string fdfPath, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fdfPath);
+
+        return Task.Run(
+            () =>
+            {
+                ct.ThrowIfCancellationRequested();
+                if (!File.Exists(fdfPath))
+                {
+                    throw new FileNotFoundException("FDF file not found.", fdfPath);
+                }
+
+                var json = File.ReadAllText(fdfPath, Encoding.UTF8);
+                var payload = JsonSerializer.Deserialize<FdfPayload>(json, FdfJsonOptions) ?? new FdfPayload();
+                foreach (var record in payload.Annotations)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var annotation = FromFdfRecord(record);
+                    if (annotation is not null)
+                    {
+                        document.AddAnnotation(annotation);
+                    }
+                }
+            },
+            ct);
+    }
+
+    /// <inheritdoc />
     public AnnotationPoint ConvertScreenToPdf(double screenX, double screenY, double dpiScale, double pageHeightPt)
     {
         var scale = Math.Max(0.0001d, dpiScale);
@@ -181,6 +241,147 @@ public sealed class AnnotationService : IAnnotationService
             default:
                 return false;
         }
+    }
+
+    private static FdfAnnotationRecord ToFdfRecord(Annotation annotation)
+    {
+        var bounds = annotation.Bounds;
+        return annotation switch
+        {
+            HighlightAnnotation highlight => new FdfAnnotationRecord
+            {
+                Id = annotation.Id,
+                Type = "highlight",
+                PageNumber = annotation.PageNumber,
+                Left = bounds.Left,
+                Top = bounds.Top,
+                Right = bounds.Right,
+                Bottom = bounds.Bottom,
+                Author = annotation.Author,
+                Comment = annotation.Comment,
+                HighlightType = highlight.Type.ToString(),
+                HighlightColor = highlight.Color.ToString()
+            },
+            CommentAnnotation comment => new FdfAnnotationRecord
+            {
+                Id = annotation.Id,
+                Type = "comment",
+                PageNumber = annotation.PageNumber,
+                Left = bounds.Left,
+                Top = bounds.Top,
+                Right = bounds.Right,
+                Bottom = bounds.Bottom,
+                Author = annotation.Author,
+                Comment = annotation.Comment,
+                Text = comment.Text,
+                IsOpen = comment.IsOpen
+            },
+            FreehandAnnotation freehand => new FdfAnnotationRecord
+            {
+                Id = annotation.Id,
+                Type = "freehand",
+                PageNumber = annotation.PageNumber,
+                Left = bounds.Left,
+                Top = bounds.Top,
+                Right = bounds.Right,
+                Bottom = bounds.Bottom,
+                Author = annotation.Author,
+                Comment = annotation.Comment,
+                StrokeColorHex = freehand.StrokeColorHex,
+                StrokeWidth = freehand.StrokeWidth,
+                Strokes = freehand.Strokes
+                    .Select(stroke => stroke.Select(point => new FdfPoint(point.X, point.Y)).ToArray())
+                    .ToArray()
+            },
+            ShapeAnnotation shape => new FdfAnnotationRecord
+            {
+                Id = annotation.Id,
+                Type = "shape",
+                PageNumber = annotation.PageNumber,
+                Left = bounds.Left,
+                Top = bounds.Top,
+                Right = bounds.Right,
+                Bottom = bounds.Bottom,
+                Author = annotation.Author,
+                Comment = annotation.Comment,
+                ShapeType = shape.Type.ToString(),
+                StrokeColorHex = shape.StrokeColorHex,
+                FillColorHex = shape.FillColorHex,
+                StrokeWidth = shape.StrokeWidth
+            },
+            _ => new FdfAnnotationRecord
+            {
+                Id = annotation.Id,
+                Type = "unknown",
+                PageNumber = annotation.PageNumber,
+                Left = bounds.Left,
+                Top = bounds.Top,
+                Right = bounds.Right,
+                Bottom = bounds.Bottom,
+                Author = annotation.Author,
+                Comment = annotation.Comment
+            }
+        };
+    }
+
+    private static Annotation? FromFdfRecord(FdfAnnotationRecord record)
+    {
+        var bounds = new PdfTextBounds(record.Left, record.Top, record.Right, record.Bottom);
+        return record.Type?.ToLowerInvariant() switch
+        {
+            "highlight" => new HighlightAnnotation
+            {
+                Id = record.Id == Guid.Empty ? Guid.NewGuid() : record.Id,
+                PageNumber = record.PageNumber,
+                Bounds = bounds,
+                Author = record.Author ?? Environment.UserName,
+                Comment = record.Comment,
+                Type = Enum.TryParse<HighlightType>(record.HighlightType, true, out var highlightType)
+                    ? highlightType
+                    : HighlightType.Highlight,
+                Color = Enum.TryParse<HighlightColor>(record.HighlightColor, true, out var highlightColor)
+                    ? highlightColor
+                    : HighlightColor.Yellow
+            },
+            "comment" => new CommentAnnotation
+            {
+                Id = record.Id == Guid.Empty ? Guid.NewGuid() : record.Id,
+                PageNumber = record.PageNumber,
+                Bounds = bounds,
+                Author = record.Author ?? Environment.UserName,
+                Comment = record.Comment,
+                Text = record.Text ?? string.Empty,
+                IsOpen = record.IsOpen
+            },
+            "freehand" => new FreehandAnnotation
+            {
+                Id = record.Id == Guid.Empty ? Guid.NewGuid() : record.Id,
+                PageNumber = record.PageNumber,
+                Bounds = bounds,
+                Author = record.Author ?? Environment.UserName,
+                Comment = record.Comment,
+                StrokeColorHex = string.IsNullOrWhiteSpace(record.StrokeColorHex) ? DefaultStrokeColorHex : record.StrokeColorHex,
+                StrokeWidth = record.StrokeWidth <= 0d ? DefaultStrokeWidth : record.StrokeWidth,
+                Strokes = record.Strokes
+                    .Select(stroke => stroke.Select(point => new AnnotationPoint(point.X, point.Y)).ToArray() as IReadOnlyList<AnnotationPoint>)
+                    .ToArray()
+            },
+            "shape" => new ShapeAnnotation
+            {
+                Id = record.Id == Guid.Empty ? Guid.NewGuid() : record.Id,
+                PageNumber = record.PageNumber,
+                Bounds = bounds,
+                Author = record.Author ?? Environment.UserName,
+                Comment = record.Comment,
+                Type = Enum.TryParse<ShapeType>(record.ShapeType, true, out var shapeType)
+                    ? shapeType
+                    : ShapeType.Rectangle,
+                StrokeColorHex = string.IsNullOrWhiteSpace(record.StrokeColorHex) ? DefaultStrokeColorHex : record.StrokeColorHex,
+                FillColorHex = record.FillColorHex,
+                StrokeWidth = record.StrokeWidth <= 0d ? DefaultStrokeWidth : record.StrokeWidth
+            },
+            _ => null
+        };
     }
 
     private static void AddAnnotationToPage(IntPtr pageHandle, Annotation annotation)
@@ -372,6 +573,60 @@ public sealed class AnnotationService : IAnnotationService
             .First()
             .Color;
     }
+
+    private static readonly JsonSerializerOptions FdfJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true
+    };
+
+    private sealed class FdfPayload
+    {
+        public string FilePath { get; set; } = string.Empty;
+
+        public IReadOnlyList<FdfAnnotationRecord> Annotations { get; set; } = [];
+    }
+
+    private sealed class FdfAnnotationRecord
+    {
+        public Guid Id { get; set; }
+
+        public string? Type { get; set; }
+
+        public int PageNumber { get; set; }
+
+        public double Left { get; set; }
+
+        public double Top { get; set; }
+
+        public double Right { get; set; }
+
+        public double Bottom { get; set; }
+
+        public string? Author { get; set; }
+
+        public string? Comment { get; set; }
+
+        public string? Text { get; set; }
+
+        public bool IsOpen { get; set; }
+
+        public string? HighlightType { get; set; }
+
+        public string? HighlightColor { get; set; }
+
+        public string? ShapeType { get; set; }
+
+        public string? StrokeColorHex { get; set; }
+
+        public string? FillColorHex { get; set; }
+
+        public double StrokeWidth { get; set; }
+
+        public IReadOnlyList<IReadOnlyList<FdfPoint>> Strokes { get; set; } = [];
+    }
+
+    private readonly record struct FdfPoint(double X, double Y);
 
     private sealed class PdfiumFileWriter : IDisposable
     {
