@@ -30,6 +30,7 @@ public partial class MainWindow : Window
     private const double A4AspectRatio = 0.707d;
     private const double SplitPaneMinWidthPx = 120d;
     private readonly IPdfRenderService _pdfRenderService;
+    private readonly IAnnotationService _annotationService;
     private readonly SearchService _searchService;
     private readonly SearchViewModel _searchViewModel;
     private readonly ISettingsService _settingsService;
@@ -38,6 +39,7 @@ public partial class MainWindow : Window
     private readonly Dictionary<PdfPageControl, (TabViewModel Tab, PdfPage Page)> _continuousPageMap = [];
     private readonly Dictionary<TabViewModel, IReadOnlyList<PdfBookmarkItem>> _bookmarkMap = [];
     private readonly Dictionary<(TabViewModel Tab, int PageNumber), IReadOnlyList<Avalonia.Rect>> _selectionHighlightMap = [];
+    private readonly Dictionary<(TabViewModel Tab, int PageNumber), IReadOnlyList<PdfTextBounds>> _selectionPdfBoundsMap = [];
     private readonly Dictionary<TabViewModel, WatchedFile> _watchers = [];
     private readonly List<TabViewModel> _splitDetachedTabs = [];
     private CancellationTokenSource? _searchCts;
@@ -70,6 +72,7 @@ public partial class MainWindow : Window
     public MainWindow(IPdfRenderService pdfRenderService)
     {
         _pdfRenderService = pdfRenderService ?? throw new ArgumentNullException(nameof(pdfRenderService));
+        _annotationService = new AnnotationService();
         _searchService = new SearchService();
         _searchViewModel = new SearchViewModel(_searchService);
         _settingsService = new SettingsService();
@@ -131,6 +134,8 @@ public partial class MainWindow : Window
         }
 
         var tab = new TabViewModel(document);
+        var annotations = await _annotationService.LoadAnnotationsAsync(document).ConfigureAwait(true);
+        document.SetAnnotations(annotations);
         tab.ZoomLevel = _settings.DefaultZoom;
         tab.CurrentPage = Math.Clamp(initialPage, 1, tab.PageCount);
         switch (_settings.DefaultViewMode)
@@ -261,8 +266,11 @@ public partial class MainWindow : Window
         PageControl.ZoomLevel = 1.0d;
         PageControl.Width = bitmap.Width;
         PageControl.Height = bitmap.Height;
+        AnnotationOverlayCanvas.Width = bitmap.Width;
+        AnnotationOverlayCanvas.Height = bitmap.Height;
         PageControl.SetBitmap(bitmap);
         ApplyHighlights(PageControl, tab, page);
+        RebuildCommentOverlay(tab, page);
         UpdateStatusBar();
     }
 
@@ -271,6 +279,7 @@ public partial class MainWindow : Window
         SinglePageScrollViewer.IsVisible = false;
         ContinuousScrollViewer.IsVisible = false;
         SplitViewGrid.IsVisible = true;
+        AnnotationOverlayCanvas.Children.Clear();
         ContinuousPagePanel.Children.Clear();
         _continuousPageMap.Clear();
 
@@ -388,7 +397,7 @@ public partial class MainWindow : Window
                 HorizontalAlignment = HorizontalAlignment.Right
             };
 
-            closeButton.Click += (_, _) => CloseTab(tab);
+            closeButton.Click += async (_, _) => await CloseTabAsync(tab).ConfigureAwait(true);
             DockPanel.SetDock(closeButton, Dock.Right);
             panel.Children.Add(closeButton);
             panel.Children.Add(new TextBlock
@@ -414,10 +423,10 @@ public partial class MainWindow : Window
         duplicate.Click += (_, _) => OpenFileWithoutAwait(tab.Document.FilePath);
 
         var closeOthers = new MenuItem { Header = "他を閉じる" };
-        closeOthers.Click += (_, _) => CloseOtherTabs(tab);
+        closeOthers.Click += async (_, _) => await CloseOtherTabsAsync(tab).ConfigureAwait(true);
 
         var closeRight = new MenuItem { Header = "右を閉じる" };
-        closeRight.Click += (_, _) => CloseTabsToRight(tab);
+        closeRight.Click += async (_, _) => await CloseTabsToRightAsync(tab).ConfigureAwait(true);
 
         var openExplorer = new MenuItem { Header = "エクスプローラーで開く" };
         openExplorer.Click += (_, _) => OpenInExplorer(tab.Document.FilePath);
@@ -591,6 +600,20 @@ public partial class MainWindow : Window
         {
             control.SelectionHighlights = [];
         }
+
+        control.AnnotationVisuals = tab.Document.Annotations
+            .Where(annotation => annotation.PageNumber == page.PageNumber)
+            .OfType<HighlightAnnotation>()
+            .Select(annotation => new AnnotationVisual(
+                ConvertBoundsToPixelRect(annotation.Bounds, page, tab.ZoomLevel),
+                annotation.Type switch
+                {
+                    HighlightType.Underline => AnnotationVisualKind.Underline,
+                    HighlightType.Strikethrough => AnnotationVisualKind.Strikethrough,
+                    _ => AnnotationVisualKind.Highlight
+                },
+                ToAvaloniaColor(annotation.Color)))
+            .ToArray();
     }
 
     private static Avalonia.Rect ConvertBoundsToPixelRect(PdfTextBounds bounds, PdfPage page, double zoomLevel)
@@ -603,6 +626,115 @@ public partial class MainWindow : Window
         var y = (page.HeightPt - topPdf) * scale;
         var height = Math.Max(1d, (topPdf - bottomPdf) * scale);
         return new Avalonia.Rect(left, y, Math.Max(1d, right - left), height);
+    }
+
+    private static Color ToAvaloniaColor(HighlightColor color)
+    {
+        return color switch
+        {
+            HighlightColor.Green => Color.FromRgb(0, 200, 120),
+            HighlightColor.Blue => Color.FromRgb(80, 160, 255),
+            HighlightColor.Pink => Color.FromRgb(255, 120, 180),
+            _ => Color.FromRgb(255, 220, 0)
+        };
+    }
+
+    private void RebuildCommentOverlay(TabViewModel tab, PdfPage page)
+    {
+        AnnotationOverlayCanvas.Children.Clear();
+        var dpiScale = (ScreenDpi * Math.Max(0.01d, tab.ZoomLevel)) / PdfDpi;
+        var comments = tab.Document.Annotations
+            .Where(annotation => annotation.PageNumber == page.PageNumber)
+            .OfType<CommentAnnotation>()
+            .ToArray();
+        foreach (var comment in comments)
+        {
+            var anchor = _annotationService.ConvertPdfToScreen(
+                Math.Min(comment.Bounds.Left, comment.Bounds.Right),
+                Math.Max(comment.Bounds.Top, comment.Bounds.Bottom),
+                dpiScale,
+                page.HeightPt);
+
+            if (!comment.IsOpen)
+            {
+                var pinButton = new Button
+                {
+                    Content = "📌",
+                    Width = 26,
+                    Height = 26,
+                    Padding = new Thickness(0),
+                    Background = new SolidColorBrush(Color.Parse("#fffde7")),
+                    BorderBrush = new SolidColorBrush(Color.Parse("#f0c040")),
+                    BorderThickness = new Thickness(1)
+                };
+                pinButton.Click += (_, _) =>
+                {
+                    comment.IsOpen = true;
+                    comment.Touch();
+                    tab.Document.MarkModified();
+                    RebuildCommentOverlay(tab, page);
+                };
+                Canvas.SetLeft(pinButton, Math.Max(0, anchor.X));
+                Canvas.SetTop(pinButton, Math.Max(0, anchor.Y));
+                AnnotationOverlayCanvas.Children.Add(pinButton);
+                continue;
+            }
+
+            var panel = new StackPanel { Spacing = 4 };
+            var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            var pin = new Button
+            {
+                Content = "📌",
+                Width = 24,
+                Height = 24,
+                Padding = new Thickness(0)
+            };
+            pin.Click += (_, _) =>
+            {
+                comment.IsOpen = false;
+                comment.Touch();
+                tab.Document.MarkModified();
+                RebuildCommentOverlay(tab, page);
+            };
+            header.Children.Add(pin);
+            header.Children.Add(new TextBlock
+            {
+                Text = $"{comment.Author}  {comment.CreatedAt.ToLocalTime():yyyy-MM-dd HH:mm}",
+                Foreground = new SolidColorBrush(Color.FromRgb(80, 80, 80)),
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            panel.Children.Add(header);
+
+            var textBox = new TextBox
+            {
+                Text = comment.Text,
+                AcceptsReturn = true,
+                Width = 220,
+                MinHeight = 70,
+                TextWrapping = TextWrapping.Wrap
+            };
+            textBox.TextChanged += (_, _) =>
+            {
+                comment.Text = textBox.Text ?? string.Empty;
+                comment.Comment = comment.Text;
+                comment.Touch();
+                tab.Document.MarkModified();
+            };
+            panel.Children.Add(textBox);
+
+            var noteBorder = new Border
+            {
+                Background = new SolidColorBrush(Color.Parse("#fffde7")),
+                BorderBrush = new SolidColorBrush(Color.Parse("#f0c040")),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(8),
+                Child = panel
+            };
+            Canvas.SetLeft(noteBorder, Math.Max(0, anchor.X));
+            Canvas.SetTop(noteBorder, Math.Max(0, anchor.Y));
+            AnnotationOverlayCanvas.Children.Add(noteBorder);
+        }
     }
 
     private void UpdateToolbarState()
@@ -757,9 +889,22 @@ public partial class MainWindow : Window
         copy.Click += async (_, _) => await CopySelectedTextAsync().ConfigureAwait(true);
 
         var highlight = new MenuItem { Header = "ハイライト" };
+        var highlightYellow = new MenuItem { Header = "黄" };
+        highlightYellow.Click += (_, _) => AddHighlightFromSelection(HighlightType.Highlight, HighlightColor.Yellow);
+        var highlightGreen = new MenuItem { Header = "緑" };
+        highlightGreen.Click += (_, _) => AddHighlightFromSelection(HighlightType.Highlight, HighlightColor.Green);
+        var highlightBlue = new MenuItem { Header = "青" };
+        highlightBlue.Click += (_, _) => AddHighlightFromSelection(HighlightType.Highlight, HighlightColor.Blue);
+        var highlightPink = new MenuItem { Header = "ピンク" };
+        highlightPink.Click += (_, _) => AddHighlightFromSelection(HighlightType.Highlight, HighlightColor.Pink);
+        highlight.ItemsSource = new object[] { highlightYellow, highlightGreen, highlightBlue, highlightPink };
+
         var underline = new MenuItem { Header = "下線を引く" };
+        underline.Click += (_, _) => AddHighlightFromSelection(HighlightType.Underline, HighlightColor.Yellow);
         var strike = new MenuItem { Header = "取り消し線" };
+        strike.Click += (_, _) => AddHighlightFromSelection(HighlightType.Strikethrough, HighlightColor.Pink);
         var comment = new MenuItem { Header = "コメントを追加" };
+        comment.Click += (_, _) => AddCommentFromSelection();
         var link = new MenuItem { Header = "リンクを追加" };
         var searchSelected = new MenuItem { Header = "選択テキストを検索" };
         searchSelected.Click += (_, _) =>
@@ -793,6 +938,57 @@ public partial class MainWindow : Window
         };
     }
 
+    private void AddHighlightFromSelection(HighlightType type, HighlightColor color)
+    {
+        var tab = _activeTab;
+        var page = _selectionPage;
+        if (tab is null || page is null || !_selectionPdfBoundsMap.TryGetValue((tab, page.PageNumber), out var selectionBounds))
+        {
+            return;
+        }
+
+        foreach (var bounds in selectionBounds)
+        {
+            tab.Document.AddAnnotation(new HighlightAnnotation
+            {
+                PageNumber = page.PageNumber,
+                Bounds = bounds,
+                Type = type,
+                Color = color
+            });
+        }
+
+        _ = RenderActiveTabAsync();
+    }
+
+    private void AddCommentFromSelection()
+    {
+        var tab = _activeTab;
+        if (tab is null)
+        {
+            return;
+        }
+
+        var page = _selectionPage ?? tab.Document.Pages[tab.CurrentPage - 1];
+        var selectedBounds = _selectionPdfBoundsMap.TryGetValue((tab, page.PageNumber), out var boundsList)
+            ? boundsList
+            : [];
+        var bounds = selectedBounds.Count > 0
+            ? selectedBounds[0]
+            : new PdfTextBounds(tab.MouseX, tab.MouseY + 18, tab.MouseX + 120, tab.MouseY - 18);
+        var comment = new CommentAnnotation
+        {
+            PageNumber = page.PageNumber,
+            Bounds = bounds,
+            Text = string.IsNullOrWhiteSpace(_selectedText) ? string.Empty : _selectedText,
+            Comment = string.IsNullOrWhiteSpace(_selectedText) ? null : _selectedText,
+            Author = Environment.UserName,
+            IsOpen = true
+        };
+        tab.Document.AddAnnotation(comment);
+        _ = RenderActiveTabAsync();
+    }
+
     private void SetEmptyStateVisible(bool visible)
     {
         EmptyStateTextBlock.IsVisible = visible;
@@ -805,6 +1001,7 @@ public partial class MainWindow : Window
     private void ClearPageViews()
     {
         PageControl.SetBitmap(null);
+        AnnotationOverlayCanvas.Children.Clear();
         PrimarySplitPageControl.SetBitmap(null);
         SecondarySplitPageControl.SetBitmap(null);
         ContinuousPagePanel.Children.Clear();
@@ -833,7 +1030,27 @@ public partial class MainWindow : Window
         }
     }
 
-    private void CloseTab(TabViewModel tab)
+    private async Task<bool> CloseTabAsync(TabViewModel tab)
+    {
+        if (tab.Document.IsModified)
+        {
+            var saveDecision = await ShowUnsavedAnnotationDialogAsync().ConfigureAwait(true);
+            if (saveDecision == AnnotationSaveDecision.Cancel)
+            {
+                return false;
+            }
+
+            if (saveDecision == AnnotationSaveDecision.Save)
+            {
+                await _annotationService.SaveAnnotationsAsync(tab.Document).ConfigureAwait(true);
+            }
+        }
+
+        CloseTabCore(tab);
+        return true;
+    }
+
+    private void CloseTabCore(TabViewModel tab)
     {
         if (!_tabs.Remove(tab))
         {
@@ -848,6 +1065,10 @@ public partial class MainWindow : Window
         foreach (var key in _selectionHighlightMap.Keys.Where(key => ReferenceEquals(key.Tab, tab)).ToArray())
         {
             _selectionHighlightMap.Remove(key);
+        }
+        foreach (var key in _selectionPdfBoundsMap.Keys.Where(key => ReferenceEquals(key.Tab, tab)).ToArray())
+        {
+            _selectionPdfBoundsMap.Remove(key);
         }
         if (ReferenceEquals(_splitSecondaryTab, tab))
         {
@@ -878,17 +1099,17 @@ public partial class MainWindow : Window
         ActivateTab(_tabs[Math.Max(0, _tabs.Count - 1)]);
     }
 
-    private void CloseOtherTabs(TabViewModel baseTab)
+    private async Task CloseOtherTabsAsync(TabViewModel baseTab)
     {
         foreach (var tab in _tabs.Where(tab => !ReferenceEquals(tab, baseTab)).ToArray())
         {
-            CloseTab(tab);
+            await CloseTabAsync(tab).ConfigureAwait(true);
         }
 
         ActivateTab(baseTab);
     }
 
-    private void CloseTabsToRight(TabViewModel baseTab)
+    private async Task CloseTabsToRightAsync(TabViewModel baseTab)
     {
         var index = _tabs.IndexOf(baseTab);
         if (index < 0)
@@ -898,7 +1119,7 @@ public partial class MainWindow : Window
 
         foreach (var tab in _tabs.Skip(index + 1).ToArray())
         {
-            CloseTab(tab);
+            await CloseTabAsync(tab).ConfigureAwait(true);
         }
 
         ActivateTab(baseTab);
@@ -956,6 +1177,7 @@ public partial class MainWindow : Window
         var bounds = CreateBoundsFromDrag(_selectionStartPdfPoint, currentPdfPoint);
         var selection = await _searchService.SelectTextAsync(page, bounds).ConfigureAwait(true);
         _selectedText = selection.Text.Trim();
+        _selectionPdfBoundsMap[(tab, page.PageNumber)] = selection.Bounds;
         _selectionHighlightMap[(tab, page.PageNumber)] = selection.Bounds
             .Select(item => ConvertBoundsToPixelRect(item, page, tab.ZoomLevel))
             .ToArray();
@@ -1024,7 +1246,7 @@ public partial class MainWindow : Window
 
         foreach (var tab in _tabs.ToArray())
         {
-            CloseTab(tab);
+            CloseTabCore(tab);
         }
 
         _pdfRenderService.Dispose();
@@ -1088,6 +1310,7 @@ public partial class MainWindow : Window
             _selectionStartPdfPoint = new Point(info.Tab.MouseX, info.Tab.MouseY);
             _selectedText = string.Empty;
             _selectionHighlightMap.Remove((info.Tab, info.Page.PageNumber));
+            _selectionPdfBoundsMap.Remove((info.Tab, info.Page.PageNumber));
         }
     }
 
@@ -1118,6 +1341,7 @@ public partial class MainWindow : Window
         _selectionStartPdfPoint = new Point(tab.MouseX, tab.MouseY);
         _selectedText = string.Empty;
         _selectionHighlightMap.Remove((tab, page.PageNumber));
+        _selectionPdfBoundsMap.Remove((tab, page.PageNumber));
     }
 
     private void OnSinglePagePointerReleased(object? sender, PointerReleasedEventArgs e)
@@ -1510,7 +1734,7 @@ public partial class MainWindow : Window
 
         if ((e.KeyModifiers & KeyModifiers.Control) != 0 && e.Key == Key.W)
         {
-            CloseTab(targetTab);
+            _ = CloseTabAsync(targetTab);
             e.Handled = true;
             return;
         }
@@ -1742,8 +1966,51 @@ public partial class MainWindow : Window
 
         var currentPage = tab.CurrentPage;
         var filePath = tab.Document.FilePath;
-        CloseTab(tab);
+        CloseTabCore(tab);
         _ = await OpenFileAsync(filePath, currentPage).ConfigureAwait(true);
+    }
+
+    private async Task<AnnotationSaveDecision> ShowUnsavedAnnotationDialogAsync()
+    {
+        var dialog = new Window
+        {
+            Width = 360,
+            Height = 170,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Title = "未保存の注釈",
+            Background = new SolidColorBrush((Color)Application.Current!.FindResource("BgDark")!)
+        };
+
+        var result = AnnotationSaveDecision.Cancel;
+        var panel = new StackPanel { Margin = new Thickness(16), Spacing = 12 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = "未保存の注釈があります。保存しますか？",
+            Foreground = new SolidColorBrush((Color)Application.Current!.FindResource("TextPrimary")!)
+        });
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8 };
+        var cancelButton = new Button { Content = "キャンセル" };
+        var discardButton = new Button { Content = "破棄" };
+        var saveButton = new Button { Content = "保存" };
+        cancelButton.Click += (_, _) => dialog.Close();
+        discardButton.Click += (_, _) =>
+        {
+            result = AnnotationSaveDecision.Discard;
+            dialog.Close();
+        };
+        saveButton.Click += (_, _) =>
+        {
+            result = AnnotationSaveDecision.Save;
+            dialog.Close();
+        };
+        buttons.Children.Add(cancelButton);
+        buttons.Children.Add(discardButton);
+        buttons.Children.Add(saveButton);
+        panel.Children.Add(buttons);
+        dialog.Content = panel;
+        await dialog.ShowDialog(this).ConfigureAwait(true);
+        return result;
     }
 
     private async Task<bool> ShowReloadConfirmDialogAsync()
@@ -1822,5 +2089,12 @@ public partial class MainWindow : Window
             CancellationToken.None,
             TaskContinuationOptions.OnlyOnFaulted,
             TaskScheduler.Default);
+    }
+
+    private enum AnnotationSaveDecision
+    {
+        Save,
+        Discard,
+        Cancel
     }
 }

@@ -26,4 +26,15 @@ public class PdfiumRenderServiceTests
 
         Assert.Empty(result);
     }
+
+    [Fact]
+    public void AnnotationService_CoordinateConversion_RoundTrips()
+    {
+        var service = new AnnotationService();
+        var screen = service.ConvertPdfToScreen(100, 200, dpiScale: 2, pageHeightPt: 800);
+        var pdf = service.ConvertScreenToPdf(screen.X, screen.Y, dpiScale: 2, pageHeightPt: 800);
+
+        Assert.Equal(100, pdf.X, precision: 6);
+        Assert.Equal(200, pdf.Y, precision: 6);
+    }
 }

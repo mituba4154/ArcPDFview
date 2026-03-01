@@ -293,25 +293,25 @@ PDFium 座標系:
 
 ### Phase 3 — 注釈機能
 
-**ステータス:** ⬜ 未着手  
-**最終更新日:** —  
-**担当 Codex セッション:** —  
+**ステータス:** 🔄 作業中  
+**最終更新日:** 2026-03-01  
+**担当 Codex セッション:** Codex (GPT-5)  
 **前提:** Phase 2 の全タスク完了
 
 | # | タスク | 状態 | 備考 |
 |---|--------|------|------|
-| 3-1 | Annotation 基底クラス / 派生クラス | ⬜ | |
-| 3-2 | `IAnnotationService` / `AnnotationService` | ⬜ | |
-| 3-3 | 注釈を PDF に直接埋め込み保存 | ⬜ | `FPDF_Annot_*` API |
-| 3-4 | 既存注釈の読み込み | ⬜ | |
-| 3-5 | ハイライト（4色） | ⬜ | |
-| 3-6 | 下線 | ⬜ | |
-| 3-7 | 取り消し線 | ⬜ | |
-| 3-8 | 右クリックメニューから注釈追加 | ⬜ | |
-| 3-9 | コメント付箋 UI | ⬜ | |
-| 3-10 | テキスト入力・編集 | ⬜ | |
-| 3-11 | 著者名・日時の記録 | ⬜ | |
-| 3-12 | 付箋の開閉 | ⬜ | |
+| 3-1 | Annotation 基底クラス / 派生クラス | ✅ | 2026-03-01 完了。`src/AcroPDF.Core/Models/Annotation.cs`、`src/AcroPDF.Core/Models/HighlightAnnotation.cs`、`src/AcroPDF.Core/Models/CommentAnnotation.cs`、`src/AcroPDF.Core/Models/FreehandAnnotation.cs`、`src/AcroPDF.Core/Models/ShapeAnnotation.cs` |
+| 3-2 | `IAnnotationService` / `AnnotationService` | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/Interfaces/IAnnotationService.cs`、`src/AcroPDF.Services/AnnotationService.cs` |
+| 3-3 | 注釈を PDF に直接埋め込み保存 | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/AnnotationService.cs`（`FPDF_Annot_*` + `FPDF_SaveAsCopy`） |
+| 3-4 | 既存注釈の読み込み | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/AnnotationService.cs`（`FPDFPage_GetAnnotCount` / `FPDFPage_GetAnnot`） |
+| 3-5 | ハイライト（4色） | ✅ | 2026-03-01 完了。`src/AcroPDF.Core/Models/HighlightAnnotation.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 3-6 | 下線 | ✅ | 2026-03-01 完了。`src/AcroPDF.Core/Models/HighlightAnnotation.cs`、`src/AcroPDF.App/Controls/PdfPageControl.cs` |
+| 3-7 | 取り消し線 | ✅ | 2026-03-01 完了。`src/AcroPDF.Core/Models/HighlightAnnotation.cs`、`src/AcroPDF.App/Controls/PdfPageControl.cs` |
+| 3-8 | 右クリックメニューから注釈追加 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 3-9 | コメント付箋 UI | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 3-10 | テキスト入力・編集 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 3-11 | 著者名・日時の記録 | ✅ | 2026-03-01 完了。`src/AcroPDF.Core/Models/Annotation.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 3-12 | 付箋の開閉 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
 | 3-13 | フリーハンド描画モード | ⬜ | |
 | 3-14 | ストローク記録 | ⬜ | |
 | 3-15 | 色・太さの設定 UI | ⬜ | |

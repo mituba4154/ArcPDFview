@@ -28,4 +28,29 @@ public class PdfModelTests
 
         Assert.Equal(1, releaseCount);
     }
+
+    [Fact]
+    public void CommentAnnotation_Defaults_AreInitialized()
+    {
+        var annotation = new CommentAnnotation();
+
+        Assert.NotEqual(Guid.Empty, annotation.Id);
+        Assert.Equal(Environment.UserName, annotation.Author);
+        Assert.False(annotation.IsOpen);
+    }
+
+    [Fact]
+    public void PdfDocument_AddAnnotation_MarksModified()
+    {
+        var document = new PdfDocument(
+            filePath: "/tmp/sample.pdf",
+            nativeHandle: IntPtr.Zero,
+            pages: Array.Empty<PdfPage>(),
+            releaseHandle: null);
+
+        document.AddAnnotation(new HighlightAnnotation());
+
+        Assert.True(document.IsModified);
+        Assert.Single(document.Annotations);
+    }
 }
