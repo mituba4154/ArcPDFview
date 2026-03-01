@@ -19,7 +19,7 @@ dotnet test ArcPDFview.sln
 ## アプリ起動
 
 ```bash
-dotnet run --project /home/runner/work/ArcPDFview/ArcPDFview/src/AcroPDF.App/AcroPDF.App.csproj
+dotnet run --project src/AcroPDF.App/AcroPDF.App.csproj
 ```
 
 ## Phase 0 で追加した主要 NuGet
