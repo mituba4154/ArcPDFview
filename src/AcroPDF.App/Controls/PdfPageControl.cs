@@ -48,6 +48,31 @@ public abstract class SKCanvasView : Control
 /// </summary>
 public sealed class PdfPageControl : SKCanvasView
 {
+    static PdfPageControl()
+    {
+        SearchHighlightsProperty.Changed.AddClassHandler<PdfPageControl>((control, _) => control.InvalidateVisual());
+        CurrentSearchHighlightProperty.Changed.AddClassHandler<PdfPageControl>((control, _) => control.InvalidateVisual());
+        SelectionHighlightsProperty.Changed.AddClassHandler<PdfPageControl>((control, _) => control.InvalidateVisual());
+    }
+
+    /// <summary>
+    /// 検索ハイライト一覧プロパティです。
+    /// </summary>
+    public static readonly StyledProperty<IReadOnlyList<Rect>> SearchHighlightsProperty =
+        AvaloniaProperty.Register<PdfPageControl, IReadOnlyList<Rect>>(nameof(SearchHighlights), []);
+
+    /// <summary>
+    /// 現在検索結果ハイライトプロパティです。
+    /// </summary>
+    public static readonly StyledProperty<Rect?> CurrentSearchHighlightProperty =
+        AvaloniaProperty.Register<PdfPageControl, Rect?>(nameof(CurrentSearchHighlight));
+
+    /// <summary>
+    /// テキスト選択ハイライト一覧プロパティです。
+    /// </summary>
+    public static readonly StyledProperty<IReadOnlyList<Rect>> SelectionHighlightsProperty =
+        AvaloniaProperty.Register<PdfPageControl, IReadOnlyList<Rect>>(nameof(SelectionHighlights), []);
+
     /// <summary>
     /// ズーム倍率プロパティです。
     /// </summary>
@@ -79,6 +104,33 @@ public sealed class PdfPageControl : SKCanvasView
     }
 
     /// <summary>
+    /// 検索結果ハイライト矩形一覧を取得または設定します。
+    /// </summary>
+    public IReadOnlyList<Rect> SearchHighlights
+    {
+        get => GetValue(SearchHighlightsProperty);
+        set => SetValue(SearchHighlightsProperty, value);
+    }
+
+    /// <summary>
+    /// 現在の検索結果ハイライト矩形を取得または設定します。
+    /// </summary>
+    public Rect? CurrentSearchHighlight
+    {
+        get => GetValue(CurrentSearchHighlightProperty);
+        set => SetValue(CurrentSearchHighlightProperty, value);
+    }
+
+    /// <summary>
+    /// 選択中テキストのハイライト矩形一覧を取得または設定します。
+    /// </summary>
+    public IReadOnlyList<Rect> SelectionHighlights
+    {
+        get => GetValue(SelectionHighlightsProperty);
+        set => SetValue(SelectionHighlightsProperty, value);
+    }
+
+    /// <summary>
     /// 表示用ビットマップを設定します。
     /// </summary>
     /// <param name="bitmap">表示するビットマップ。</param>
@@ -107,6 +159,13 @@ public sealed class PdfPageControl : SKCanvasView
         var destinationRect = new SKRect(left, top, left + scaledWidth, top + scaledHeight);
 
         canvas.DrawBitmap(_bitmap, sourceRect, destinationRect);
+        DrawHighlights(canvas, destinationRect, SearchHighlights, new SKColor(255, 180, 0, 89));
+        if (CurrentSearchHighlight is Rect current)
+        {
+            DrawHighlights(canvas, destinationRect, [current], new SKColor(100, 160, 255, 89));
+        }
+
+        DrawHighlights(canvas, destinationRect, SelectionHighlights, new SKColor(120, 200, 255, 96));
     }
 
     /// <inheritdoc />
@@ -118,4 +177,36 @@ public sealed class PdfPageControl : SKCanvasView
     }
 
     private SKBitmap? _bitmap;
+
+    private void DrawHighlights(SKCanvas canvas, SKRect destinationRect, IReadOnlyList<Rect>? highlights, SKColor color)
+    {
+        if (_bitmap is null || highlights is null || highlights.Count == 0)
+        {
+            return;
+        }
+
+        var scaleX = destinationRect.Width / Math.Max(1, _bitmap.Width);
+        var scaleY = destinationRect.Height / Math.Max(1, _bitmap.Height);
+        using var paint = new SKPaint
+        {
+            Color = color,
+            IsAntialias = true,
+            Style = SKPaintStyle.Fill
+        };
+
+        foreach (var highlight in highlights)
+        {
+            if (highlight.Width <= 0 || highlight.Height <= 0)
+            {
+                continue;
+            }
+
+            var rect = new SKRect(
+                destinationRect.Left + (float)(highlight.X * scaleX),
+                destinationRect.Top + (float)(highlight.Y * scaleY),
+                destinationRect.Left + (float)((highlight.X + highlight.Width) * scaleX),
+                destinationRect.Top + (float)((highlight.Y + highlight.Height) * scaleY));
+            canvas.DrawRect(rect, paint);
+        }
+    }
 }

@@ -124,13 +124,26 @@
               Background="{DynamicResource BgPanelBrush}"
               BorderBrush="{DynamicResource BorderBrush}"
               BorderThickness="0,0,1,0">
-        <ScrollViewer x:Name="ThumbnailScrollViewer"
-                      HorizontalScrollBarVisibility="Disabled"
-                      VerticalScrollBarVisibility="Auto">
-          <StackPanel x:Name="ThumbnailPanel"
-                      Margin="8"
-                      Spacing="8" />
-        </ScrollViewer>
+        <TabControl x:Name="LeftSidebarTabControl">
+          <TabItem Header="サムネイル">
+            <ScrollViewer x:Name="ThumbnailScrollViewer"
+                          HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto">
+              <StackPanel x:Name="ThumbnailPanel"
+                          Margin="8"
+                          Spacing="8" />
+            </ScrollViewer>
+          </TabItem>
+          <TabItem Header="目次">
+            <ScrollViewer x:Name="BookmarkScrollViewer"
+                          HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto">
+              <StackPanel x:Name="BookmarkPanel"
+                          Margin="8"
+                          Spacing="2" />
+            </ScrollViewer>
+          </TabItem>
+        </TabControl>
       </Border>
 
       <Grid Grid.Column="1">
@@ -143,10 +156,12 @@
                       HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Auto">
           <controls:PdfPageControl x:Name="PageControl"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Top"
-                                   Margin="16"
-                                   PointerMoved="OnSinglePagePointerMoved" />
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Top"
+                                    Margin="16"
+                                    PointerMoved="OnSinglePagePointerMoved"
+                                    PointerPressed="OnSinglePagePointerPressed"
+                                    PointerReleased="OnSinglePagePointerReleased" />
         </ScrollViewer>
         <ScrollViewer x:Name="ContinuousScrollViewer"
                       HorizontalScrollBarVisibility="Auto"
@@ -157,6 +172,50 @@
                       Spacing="16"
                       HorizontalAlignment="Center" />
         </ScrollViewer>
+        <Border x:Name="SearchOverlay"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Margin="0,12,12,0"
+                Background="{DynamicResource BgPanel2Brush}"
+                BorderBrush="{DynamicResource BorderLightBrush}"
+                BorderThickness="1"
+                CornerRadius="6"
+                Padding="8"
+                IsVisible="False">
+          <StackPanel Spacing="6">
+            <StackPanel Orientation="Horizontal"
+                        Spacing="6">
+              <TextBox x:Name="SearchTextBox"
+                       Width="200"
+                       Watermark="検索"
+                       TextChanged="OnSearchTextChanged" />
+              <TextBlock x:Name="SearchCountTextBlock"
+                         VerticalAlignment="Center"
+                         Foreground="{DynamicResource TextPrimaryBrush}"
+                         Text="0/0件" />
+              <Button Content="∧"
+                      Width="26"
+                      Click="OnSearchPreviousClicked" />
+              <Button Content="∨"
+                      Width="26"
+                      Click="OnSearchNextClicked" />
+              <Button Content="×"
+                      Width="26"
+                      Click="OnSearchCloseClicked" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal"
+                        Spacing="12">
+              <CheckBox x:Name="CaseSensitiveSearchCheckBox"
+                        Content="Aa"
+                        Foreground="{DynamicResource TextPrimaryBrush}"
+                        Click="OnSearchOptionChanged" />
+              <CheckBox x:Name="RegexSearchCheckBox"
+                        Content=".*"
+                        Foreground="{DynamicResource TextPrimaryBrush}"
+                        Click="OnSearchOptionChanged" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
       </Grid>
     </Grid>
 

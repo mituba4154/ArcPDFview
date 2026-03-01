@@ -59,6 +59,41 @@ public class TabViewModelTests
         Assert.False(tab.Thumbnails[2].IsSelected);
     }
 
+    [Fact]
+    public void SetSearchResults_SetsCurrentResultAndPage()
+    {
+        using var tab = new TabViewModel(CreateDocument(5));
+        var results = new[]
+        {
+            new SearchResult(3, new PdfTextBounds(10, 20, 30, 10), 0),
+            new SearchResult(5, new PdfTextBounds(10, 20, 30, 10), 1)
+        };
+
+        tab.SetSearchResults(results);
+
+        Assert.Equal(0, tab.CurrentSearchResultIndex);
+        Assert.Equal(3, tab.CurrentPage);
+    }
+
+    [Fact]
+    public void MoveToNextSearchResult_WrapsAround()
+    {
+        using var tab = new TabViewModel(CreateDocument(5));
+        tab.SetSearchResults(
+        [
+            new SearchResult(2, new PdfTextBounds(1, 2, 3, 1), 0),
+            new SearchResult(4, new PdfTextBounds(1, 2, 3, 1), 1)
+        ]);
+
+        tab.MoveToNextSearchResult();
+        Assert.Equal(1, tab.CurrentSearchResultIndex);
+        Assert.Equal(4, tab.CurrentPage);
+
+        tab.MoveToNextSearchResult();
+        Assert.Equal(0, tab.CurrentSearchResultIndex);
+        Assert.Equal(2, tab.CurrentPage);
+    }
+
     private static PdfDocument CreateDocument(int pageCount)
     {
         var pages = Enumerable.Range(0, pageCount)

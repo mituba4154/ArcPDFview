@@ -21,6 +21,8 @@ public sealed partial class TabViewModel : ObservableObject, IDisposable
     private const int ThumbnailTargetWidthPx = 140;
     private readonly CancellationTokenSource _thumbnailCts = new();
     private int _isDisposed;
+    private IReadOnlyList<SearchResult> _searchResults = [];
+    private int _currentSearchResultIndex = -1;
 
     /// <summary>
     /// <see cref="TabViewModel"/> の新しいインスタンスを初期化します。
@@ -61,6 +63,11 @@ public sealed partial class TabViewModel : ObservableObject, IDisposable
     public ObservableCollection<ThumbnailViewModel> Thumbnails { get; }
 
     /// <summary>
+    /// 目次ブックマーク一覧を取得します。
+    /// </summary>
+    public ObservableCollection<PdfBookmarkItem> Bookmarks { get; } = [];
+
+    /// <summary>
     /// 現在ページ番号（1 始まり）を取得または設定します。
     /// </summary>
     [ObservableProperty]
@@ -79,6 +86,30 @@ public sealed partial class TabViewModel : ObservableObject, IDisposable
     private bool _isContinuousMode;
 
     /// <summary>
+    /// 検索バーの表示状態を取得または設定します。
+    /// </summary>
+    [ObservableProperty]
+    private bool _isSearchVisible;
+
+    /// <summary>
+    /// 検索文字列を取得または設定します。
+    /// </summary>
+    [ObservableProperty]
+    private string _searchQuery = string.Empty;
+
+    /// <summary>
+    /// 大文字小文字を区別するかどうかを取得または設定します。
+    /// </summary>
+    [ObservableProperty]
+    private bool _isSearchCaseSensitive;
+
+    /// <summary>
+    /// 正規表現検索を使用するかどうかを取得または設定します。
+    /// </summary>
+    [ObservableProperty]
+    private bool _isSearchRegex;
+
+    /// <summary>
     /// ページ入力欄のテキストを取得または設定します。
     /// </summary>
     [ObservableProperty]
@@ -95,6 +126,24 @@ public sealed partial class TabViewModel : ObservableObject, IDisposable
     /// </summary>
     [ObservableProperty]
     private double _mouseY;
+
+    /// <summary>
+    /// 現在の検索結果一覧を取得します。
+    /// </summary>
+    public IReadOnlyList<SearchResult> SearchResults => _searchResults;
+
+    /// <summary>
+    /// 現在選択中の検索結果インデックス（0 始まり）を取得します。
+    /// </summary>
+    public int CurrentSearchResultIndex => _currentSearchResultIndex;
+
+    /// <summary>
+    /// 現在選択中の検索結果を取得します。
+    /// </summary>
+    public SearchResult? CurrentSearchResult =>
+        _currentSearchResultIndex >= 0 && _currentSearchResultIndex < _searchResults.Count
+            ? _searchResults[_currentSearchResultIndex]
+            : null;
 
     /// <summary>
     /// サムネイルをバックグラウンドで生成します。
@@ -193,6 +242,52 @@ public sealed partial class TabViewModel : ObservableObject, IDisposable
     public void CancelThumbnailGeneration()
     {
         _thumbnailCts.Cancel();
+    }
+
+    /// <summary>
+    /// 検索結果一覧を設定します。
+    /// </summary>
+    /// <param name="results">検索結果一覧。</param>
+    public void SetSearchResults(IReadOnlyList<SearchResult> results)
+    {
+        _searchResults = results ?? [];
+        _currentSearchResultIndex = _searchResults.Count > 0 ? 0 : -1;
+        OnPropertyChanged(nameof(SearchResults));
+        SyncCurrentPageFromSearchResult();
+    }
+
+    /// <summary>
+    /// 次の検索結果へ移動します。
+    /// </summary>
+    public void MoveToNextSearchResult()
+    {
+        if (_searchResults.Count == 0)
+        {
+            _currentSearchResultIndex = -1;
+        }
+        else
+        {
+            _currentSearchResultIndex = (_currentSearchResultIndex + 1 + _searchResults.Count) % _searchResults.Count;
+        }
+
+        SyncCurrentPageFromSearchResult();
+    }
+
+    /// <summary>
+    /// 前の検索結果へ移動します。
+    /// </summary>
+    public void MoveToPreviousSearchResult()
+    {
+        if (_searchResults.Count == 0)
+        {
+            _currentSearchResultIndex = -1;
+        }
+        else
+        {
+            _currentSearchResultIndex = (_currentSearchResultIndex - 1 + _searchResults.Count) % _searchResults.Count;
+        }
+
+        SyncCurrentPageFromSearchResult();
     }
 
     /// <summary>
@@ -323,6 +418,20 @@ public sealed partial class TabViewModel : ObservableObject, IDisposable
         {
             Thumbnails[index].IsSelected = index == CurrentPage - 1;
         }
+    }
+
+    private void SyncCurrentPageFromSearchResult()
+    {
+        if (_currentSearchResultIndex < 0 || _currentSearchResultIndex >= _searchResults.Count)
+        {
+            OnPropertyChanged(nameof(CurrentSearchResultIndex));
+            OnPropertyChanged(nameof(CurrentSearchResult));
+            return;
+        }
+
+        JumpToPage(_searchResults[_currentSearchResultIndex].PageNumber);
+        OnPropertyChanged(nameof(CurrentSearchResultIndex));
+        OnPropertyChanged(nameof(CurrentSearchResult));
     }
 
     private static SKBitmap ResizeToWidth(SKBitmap source, int targetWidth)
