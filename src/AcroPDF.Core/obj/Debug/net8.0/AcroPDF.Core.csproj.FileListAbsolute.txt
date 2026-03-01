@@ -1,0 +1,12 @@
+/home/runner/work/ArcPDFview/ArcPDFview/src/AcroPDF.Core/bin/Debug/net8.0/AcroPDF.Core.deps.json
+/home/runner/work/ArcPDFview/ArcPDFview/src/AcroPDF.Core/bin/Debug/net8.0/AcroPDF.Core.dll
+/home/runner/work/ArcPDFview/ArcPDFview/src/AcroPDF.Core/bin/Debug/net8.0/AcroPDF.Core.pdb
+/home/runner/work/ArcPDFview/ArcPDFview/src/AcroPDF.Core/obj/Debug/net8.0/AcroPDF.Core.GeneratedMSBuildEditorConfig.editorconfig
+/home/runner/work/ArcPDFview/ArcPDFview/src/AcroPDF.Core/obj/Debug/net8.0/AcroPDF.Core.AssemblyInfoInputs.cache
+/home/runner/work/ArcPDFview/ArcPDFview/src/AcroPDF.Core/obj/Debug/net8.0/AcroPDF.Core.AssemblyInfo.cs
+/home/runner/work/ArcPDFview/ArcPDFview/src/AcroPDF.Core/obj/Debug/net8.0/AcroPDF.Core.csproj.CoreCompileInputs.cache
+/home/runner/work/ArcPDFview/ArcPDFview/src/AcroPDF.Core/obj/Debug/net8.0/AcroPDF.Core.sourcelink.json
+/home/runner/work/ArcPDFview/ArcPDFview/src/AcroPDF.Core/obj/Debug/net8.0/AcroPDF.Core.dll
+/home/runner/work/ArcPDFview/ArcPDFview/src/AcroPDF.Core/obj/Debug/net8.0/refint/AcroPDF.Core.dll
+/home/runner/work/ArcPDFview/ArcPDFview/src/AcroPDF.Core/obj/Debug/net8.0/AcroPDF.Core.pdb
+/home/runner/work/ArcPDFview/ArcPDFview/src/AcroPDF.Core/obj/Debug/net8.0/ref/AcroPDF.Core.dll
