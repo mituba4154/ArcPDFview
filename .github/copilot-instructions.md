@@ -252,18 +252,18 @@ PDFium 座標系:
 | 2-13 | マウスドラッグで範囲選択 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
 | 2-14 | Ctrl+C でコピー | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
 | 2-15 | 右クリックコンテキストメニュー | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
-| 2-16 | 分割ビュー UI | ⬜ | |
-| 2-17 | 各ペイン独立操作 | ⬜ | |
-| 2-18 | 分割ラインのリサイズ | ⬜ | |
-| 2-19 | 同ファイルの異なるページを並べる | ⬜ | |
-| 2-20 | 異なるファイルを並べる | ⬜ | |
-| 2-21 | 2 ページ見開きモード | ⬜ | |
-| 2-22 | ページ回転（表示のみ） | ⬜ | |
-| 2-23 | フルスクリーン（F11） | ⬜ | |
-| 2-24 | ファイル監視・再読み込み提案 | ⬜ | `FileSystemWatcher` |
-| 2-25 | `ISettingsService` / `SettingsService` | ⬜ | JSON 設定ファイル |
-| 2-26 | 最近のファイル | ⬜ | |
-| 2-27 | セッション復元 | ⬜ | |
+| 2-16 | 分割ビュー UI | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 2-17 | 各ペイン独立操作 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 2-18 | 分割ラインのリサイズ | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 2-19 | 同ファイルの異なるページを並べる | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 2-20 | 異なるファイルを並べる | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 2-21 | 2 ページ見開きモード | ✅ | 2026-03-01 完了。`src/AcroPDF.ViewModels/TabViewModel.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 2-22 | ページ回転（表示のみ） | ✅ | 2026-03-01 完了。`src/AcroPDF.ViewModels/TabViewModel.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 2-23 | フルスクリーン（F11） | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 2-24 | ファイル監視・再読み込み提案 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 2-25 | `ISettingsService` / `SettingsService` | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/Interfaces/ISettingsService.cs`、`src/AcroPDF.Services/SettingsService.cs` |
+| 2-26 | 最近のファイル | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 2-27 | セッション復元 | ✅ | 2026-03-01 完了。`src/AcroPDF.Core/Models/AppSettings.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
 
 **Phase 2 完了チェックリスト:**
 - [ ] テキスト検索が動作しマッチがハイライトされる

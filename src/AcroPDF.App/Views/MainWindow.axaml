@@ -47,6 +47,10 @@
                   Content="開く"
                   Padding="10,2"
                   Click="OnOpenFileClicked" />
+          <Button x:Name="RecentFilesButton"
+                  Content="最近"
+                  Padding="10,2"
+                  Click="OnRecentFilesClicked" />
         </StackPanel>
 
         <StackPanel Grid.Column="1"
@@ -113,6 +117,15 @@
           <ToggleButton x:Name="ContinuousModeButton"
                         Content="⊟ 連続"
                         Click="OnContinuousModeClicked" />
+          <ToggleButton x:Name="TwoPageModeButton"
+                        Content="▥ 見開き"
+                        Click="OnTwoPageModeClicked" />
+          <ToggleButton x:Name="SplitViewModeButton"
+                        Content="⊞ 分割"
+                        Click="OnSplitViewModeClicked" />
+          <Button x:Name="RotateButton"
+                  Content="⟳ 回転"
+                  Click="OnRotateClicked" />
         </StackPanel>
       </Grid>
     </Border>
@@ -166,12 +179,66 @@
         <ScrollViewer x:Name="ContinuousScrollViewer"
                       HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Auto"
-                      IsVisible="False">
+                       IsVisible="False">
           <StackPanel x:Name="ContinuousPagePanel"
                       Margin="16"
                       Spacing="16"
                       HorizontalAlignment="Center" />
         </ScrollViewer>
+        <Grid x:Name="SplitViewGrid"
+              IsVisible="False"
+              ColumnDefinitions="*,3,*"
+              MinWidth="280">
+          <Border Grid.Column="0"
+                  Margin="8"
+                  BorderBrush="{DynamicResource BorderBrush}"
+                  BorderThickness="1">
+            <DockPanel>
+              <ComboBox x:Name="PrimarySplitTabComboBox"
+                        DockPanel.Dock="Top"
+                        Margin="8"
+                        SelectionChanged="OnPrimarySplitTabSelectionChanged" />
+              <ScrollViewer x:Name="PrimarySplitScrollViewer"
+                            HorizontalScrollBarVisibility="Auto"
+                            VerticalScrollBarVisibility="Auto">
+                <controls:PdfPageControl x:Name="PrimarySplitPageControl"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Top"
+                                          Margin="16"
+                                          PointerPressed="OnPrimarySplitPagePointerPressed" />
+              </ScrollViewer>
+            </DockPanel>
+          </Border>
+          <Border x:Name="SplitDivider"
+                  Grid.Column="1"
+                  Width="3"
+                  Background="{DynamicResource BorderLightBrush}"
+                  PointerEntered="OnSplitDividerPointerEntered"
+                  PointerExited="OnSplitDividerPointerExited"
+                  PointerPressed="OnSplitDividerPointerPressed"
+                  PointerMoved="OnSplitDividerPointerMoved"
+                  PointerReleased="OnSplitDividerPointerReleased" />
+          <Border Grid.Column="2"
+                  Margin="8"
+                  BorderBrush="{DynamicResource BorderBrush}"
+                  BorderThickness="1">
+            <DockPanel>
+              <ComboBox x:Name="SecondarySplitTabComboBox"
+                        DockPanel.Dock="Top"
+                        Margin="8"
+                        SelectionChanged="OnSecondarySplitTabSelectionChanged" />
+              <ScrollViewer x:Name="SecondarySplitScrollViewer"
+                            HorizontalScrollBarVisibility="Auto"
+                            VerticalScrollBarVisibility="Auto">
+                <controls:PdfPageControl x:Name="SecondarySplitPageControl"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Top"
+                                          Margin="16"
+                                          PointerPressed="OnSecondarySplitPagePointerPressed" />
+              </ScrollViewer>
+            </DockPanel>
+          </Border>
+        </Grid>
         <Border x:Name="SearchOverlay"
                 HorizontalAlignment="Right"
                 VerticalAlignment="Top"

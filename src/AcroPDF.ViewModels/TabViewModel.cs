@@ -86,6 +86,18 @@ public sealed partial class TabViewModel : ObservableObject, IDisposable
     private bool _isContinuousMode;
 
     /// <summary>
+    /// 2ページ見開きモードかどうかを取得または設定します。
+    /// </summary>
+    [ObservableProperty]
+    private bool _isTwoPageMode;
+
+    /// <summary>
+    /// 表示回転角度（0/90/180/270）を取得または設定します。
+    /// </summary>
+    [ObservableProperty]
+    private int _rotationDegrees;
+
+    /// <summary>
     /// 検索バーの表示状態を取得または設定します。
     /// </summary>
     [ObservableProperty]
@@ -360,6 +372,7 @@ public sealed partial class TabViewModel : ObservableObject, IDisposable
     private void SetSinglePageMode()
     {
         IsContinuousMode = false;
+        IsTwoPageMode = false;
     }
 
     /// <summary>
@@ -369,6 +382,26 @@ public sealed partial class TabViewModel : ObservableObject, IDisposable
     private void SetContinuousMode()
     {
         IsContinuousMode = true;
+        IsTwoPageMode = false;
+    }
+
+    /// <summary>
+    /// 2ページ見開きモードへ切り替えます。
+    /// </summary>
+    [RelayCommand]
+    private void SetTwoPageMode()
+    {
+        IsContinuousMode = false;
+        IsTwoPageMode = true;
+    }
+
+    /// <summary>
+    /// 表示を 90 度回転します。
+    /// </summary>
+    [RelayCommand]
+    private void RotateClockwise()
+    {
+        RotationDegrees = NormalizeRotation(RotationDegrees + 90);
     }
 
     /// <summary>
@@ -399,6 +432,11 @@ public sealed partial class TabViewModel : ObservableObject, IDisposable
     partial void OnZoomLevelChanged(double value)
     {
         ZoomLevel = PdfiumRenderService.ClampZoomLevel(value);
+    }
+
+    partial void OnRotationDegreesChanged(int value)
+    {
+        RotationDegrees = NormalizeRotation(value);
     }
 
     private PdfPage? GetCurrentPageModel()
@@ -446,6 +484,17 @@ public sealed partial class TabViewModel : ObservableObject, IDisposable
         var resized = new SKBitmap(targetWidth, targetHeight, SKColorType.Bgra8888, SKAlphaType.Premul);
         source.ScalePixels(resized, SKFilterQuality.Medium);
         return resized;
+    }
+
+    private static int NormalizeRotation(int value)
+    {
+        var normalized = value % 360;
+        if (normalized < 0)
+        {
+            normalized += 360;
+        }
+
+        return (normalized / 90) * 90;
     }
 }
 

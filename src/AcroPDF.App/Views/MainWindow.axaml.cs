@@ -2,6 +2,7 @@
 
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using AcroPDF.App.Controls;
 using AcroPDF.Core.Models;
 using AcroPDF.Services;
@@ -14,6 +15,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using SkiaSharp;
 
 namespace AcroPDF.App.Views;
 
@@ -26,16 +28,28 @@ public partial class MainWindow : Window
     private const double ScreenDpi = 96d;
     private const int ThumbnailWidthPx = 140;
     private const double A4AspectRatio = 0.707d;
+    private const int TwoPageSpacingPx = 16;
+    private const double SplitPaneMinWidthPx = 120d;
     private readonly IPdfRenderService _pdfRenderService;
     private readonly SearchService _searchService;
+    private readonly ISettingsService _settingsService;
+    private readonly MainWindowViewModel _mainWindowViewModel = new();
     private readonly List<TabViewModel> _tabs = [];
     private readonly Dictionary<PdfPageControl, (TabViewModel Tab, PdfPage Page)> _continuousPageMap = [];
     private readonly Dictionary<TabViewModel, IReadOnlyList<PdfBookmarkItem>> _bookmarkMap = [];
     private readonly Dictionary<(TabViewModel Tab, int PageNumber), IReadOnlyList<Avalonia.Rect>> _selectionHighlightMap = [];
+    private readonly Dictionary<TabViewModel, WatchedFile> _watchers = [];
+    private readonly List<TabViewModel> _splitDetachedTabs = [];
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _renderCts;
+    private AppSettings _settings = new();
     private TabViewModel? _activeTab;
+    private TabViewModel? _splitSecondaryTab;
     private bool _isSelectingText;
+    private bool _isSplitRightPaneActive;
+    private bool _isSplitDividerDragging;
+    private bool _restoreAttempted;
+    private bool _skipSessionRestore;
     private TabViewModel? _selectionTab;
     private PdfPage? _selectionPage;
     private Point _selectionStartPdfPoint;
@@ -57,13 +71,20 @@ public partial class MainWindow : Window
     {
         _pdfRenderService = pdfRenderService ?? throw new ArgumentNullException(nameof(pdfRenderService));
         _searchService = new SearchService();
+        _settingsService = new SettingsService();
+        _settings = _settingsService.Load();
         InitializeComponent();
         InitializeStaticStatusText();
         InitializeTextSelectionContextMenu();
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
         Closed += OnClosed;
+        Opened += OnOpened;
         SetEmptyStateVisible(true);
+        DataContext = _mainWindowViewModel;
+        SplitDivider.Cursor = new Cursor(StandardCursorType.SizeWestEast);
+        ApplySettingsToToolbar();
+        RebuildRecentFilesMenu();
     }
 
     /// <summary>
@@ -72,14 +93,15 @@ public partial class MainWindow : Window
     /// <param name="filePath">開くファイルパス。</param>
     public void OpenFromStartupArgument(string filePath)
     {
+        _skipSessionRestore = true;
         OpenFileWithoutAwait(filePath);
     }
 
-    private async Task OpenFileAsync(string filePath)
+    private async Task<TabViewModel?> OpenFileAsync(string filePath, int initialPage = 1, bool activate = true)
     {
         if (string.IsNullOrWhiteSpace(filePath))
         {
-            return;
+            return null;
         }
 
         string? password = null;
@@ -97,12 +119,33 @@ public partial class MainWindow : Window
                 password = await dialog.ShowDialog<string?>(this).ConfigureAwait(true);
                 if (string.IsNullOrWhiteSpace(password))
                 {
-                    return;
+                    return null;
                 }
             }
         }
 
+        if (document is null)
+        {
+            return null;
+        }
+
         var tab = new TabViewModel(document);
+        tab.ZoomLevel = _settings.DefaultZoom;
+        tab.CurrentPage = Math.Clamp(initialPage, 1, tab.PageCount);
+        switch (_settings.DefaultViewMode)
+        {
+            case ViewMode.Continuous:
+                tab.IsContinuousMode = true;
+                break;
+            case ViewMode.TwoPage:
+                tab.IsTwoPageMode = true;
+                break;
+            default:
+                tab.IsContinuousMode = false;
+                tab.IsTwoPageMode = false;
+                break;
+        }
+
         tab.ThumbnailUpdated += OnThumbnailUpdated;
         var bookmarks = _searchService.GetBookmarks(document);
         tab.Bookmarks.Clear();
@@ -113,8 +156,16 @@ public partial class MainWindow : Window
 
         _bookmarkMap[tab] = bookmarks;
         _tabs.Add(tab);
-        ActivateTab(tab);
+        _mainWindowViewModel.Tabs = new System.Collections.ObjectModel.ObservableCollection<TabViewModel>(_tabs);
+        TrackFileChanges(tab);
+        _settingsService.AddRecentFile(filePath);
+        RebuildRecentFilesMenu();
+        if (activate)
+        {
+            ActivateTab(tab);
+        }
         _ = GenerateThumbnailsAsync(tab);
+        return tab;
     }
 
     private async Task GenerateThumbnailsAsync(TabViewModel tab)
@@ -140,7 +191,9 @@ public partial class MainWindow : Window
     private void ActivateTab(TabViewModel tab)
     {
         _activeTab = tab;
+        _mainWindowViewModel.ActiveTab = tab;
         RebuildTabBar();
+        RebuildSplitTabSelectors();
         UpdateToolbarState();
         RebuildThumbnailPanel();
         RebuildBookmarkPanel();
@@ -169,7 +222,11 @@ public partial class MainWindow : Window
 
         try
         {
-            if (tab.IsContinuousMode)
+            if (_mainWindowViewModel.IsSplitView)
+            {
+                await RenderSplitViewAsync(tab, token).ConfigureAwait(true);
+            }
+            else if (tab.IsContinuousMode)
             {
                 await RenderContinuousModeAsync(tab, token).ConfigureAwait(true);
             }
@@ -186,13 +243,19 @@ public partial class MainWindow : Window
 
     private async Task RenderSinglePageAsync(TabViewModel tab, CancellationToken ct)
     {
+        SplitViewGrid.IsVisible = false;
         SinglePageScrollViewer.IsVisible = true;
         ContinuousScrollViewer.IsVisible = false;
         ContinuousPagePanel.Children.Clear();
         _continuousPageMap.Clear();
 
+        using var bitmap = await RenderTabBitmapAsync(tab, ct).ConfigureAwait(true);
+        if (bitmap is null)
+        {
+            return;
+        }
+
         var page = tab.Document.Pages[tab.CurrentPage - 1];
-        using var bitmap = await _pdfRenderService.RenderPageAsync(page, tab.ZoomLevel, ct).ConfigureAwait(true);
         PageControl.CurrentPage = page.PageNumber;
         PageControl.ZoomLevel = 1.0d;
         PageControl.Width = bitmap.Width;
@@ -202,8 +265,72 @@ public partial class MainWindow : Window
         UpdateStatusBar();
     }
 
+    private async Task RenderSplitViewAsync(TabViewModel primaryTab, CancellationToken ct)
+    {
+        SinglePageScrollViewer.IsVisible = false;
+        ContinuousScrollViewer.IsVisible = false;
+        SplitViewGrid.IsVisible = true;
+        ContinuousPagePanel.Children.Clear();
+        _continuousPageMap.Clear();
+
+        var secondaryTab = _splitSecondaryTab ?? primaryTab;
+        await RenderSplitPaneAsync(primaryTab, PrimarySplitPageControl, ct).ConfigureAwait(true);
+        await RenderSplitPaneAsync(secondaryTab, SecondarySplitPageControl, ct).ConfigureAwait(true);
+    }
+
+    private async Task RenderSplitPaneAsync(TabViewModel tab, PdfPageControl control, CancellationToken ct)
+    {
+        using var bitmap = await RenderTabBitmapAsync(tab, ct).ConfigureAwait(true);
+        if (bitmap is null)
+        {
+            control.SetBitmap(null);
+            return;
+        }
+
+        control.CurrentPage = tab.CurrentPage;
+        control.ZoomLevel = 1.0d;
+        control.Width = bitmap.Width;
+        control.Height = bitmap.Height;
+        control.SetBitmap(bitmap);
+    }
+
+    private async Task<SKBitmap?> RenderTabBitmapAsync(TabViewModel tab, CancellationToken ct)
+    {
+        if (tab.PageCount <= 0 || tab.CurrentPage <= 0 || tab.CurrentPage > tab.PageCount)
+        {
+            return null;
+        }
+
+        var page = tab.Document.Pages[tab.CurrentPage - 1];
+        using var first = await _pdfRenderService.RenderPageAsync(page, tab.ZoomLevel, ct).ConfigureAwait(true);
+        var bitmap = first.Copy();
+        if (tab.IsTwoPageMode && tab.CurrentPage < tab.PageCount)
+        {
+            var secondPage = tab.Document.Pages[tab.CurrentPage];
+            using var second = await _pdfRenderService.RenderPageAsync(secondPage, tab.ZoomLevel, ct).ConfigureAwait(true);
+            using var secondCopy = second.Copy();
+            var merged = new SKBitmap(bitmap.Width + secondCopy.Width + TwoPageSpacingPx, Math.Max(bitmap.Height, secondCopy.Height), SKColorType.Bgra8888, SKAlphaType.Premul);
+            using var canvas = new SKCanvas(merged);
+            canvas.Clear(SKColors.Transparent);
+            canvas.DrawBitmap(bitmap, 0, 0);
+            canvas.DrawBitmap(secondCopy, bitmap.Width + TwoPageSpacingPx, 0);
+            bitmap.Dispose();
+            bitmap = merged;
+        }
+
+        if (tab.RotationDegrees == 0)
+        {
+            return bitmap;
+        }
+
+        var rotated = RotateBitmap(bitmap, tab.RotationDegrees);
+        bitmap.Dispose();
+        return rotated;
+    }
+
     private async Task RenderContinuousModeAsync(TabViewModel tab, CancellationToken ct)
     {
+        SplitViewGrid.IsVisible = false;
         SinglePageScrollViewer.IsVisible = false;
         ContinuousScrollViewer.IsVisible = true;
         ContinuousPagePanel.Children.Clear();
@@ -510,6 +637,8 @@ public partial class MainWindow : Window
         PageNumberTextBox.Text = tab?.CurrentPage.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
         SinglePageModeButton.IsChecked = hasTab && !tab!.IsContinuousMode;
         ContinuousModeButton.IsChecked = hasTab && tab!.IsContinuousMode;
+        TwoPageModeButton.IsChecked = hasTab && tab!.IsTwoPageMode;
+        SplitViewModeButton.IsChecked = _mainWindowViewModel.IsSplitView;
 
         if (hasTab)
         {
@@ -629,6 +758,16 @@ public partial class MainWindow : Window
         _ = RenderActiveTabAsync();
     }
 
+    private TabViewModel? GetCommandTargetTab()
+    {
+        if (!_mainWindowViewModel.IsSplitView || !_isSplitRightPaneActive)
+        {
+            return _activeTab;
+        }
+
+        return _splitSecondaryTab ?? _activeTab;
+    }
+
     private void InitializeTextSelectionContextMenu()
     {
         PageControl.ContextMenu = BuildTextSelectionContextMenu(PageControl);
@@ -679,14 +818,17 @@ public partial class MainWindow : Window
     private void SetEmptyStateVisible(bool visible)
     {
         EmptyStateTextBlock.IsVisible = visible;
-        SinglePageScrollViewer.IsVisible = !visible && !(_activeTab?.IsContinuousMode ?? false);
+        SinglePageScrollViewer.IsVisible = !visible && !(_activeTab?.IsContinuousMode ?? false) && !_mainWindowViewModel.IsSplitView;
         ContinuousScrollViewer.IsVisible = !visible && (_activeTab?.IsContinuousMode ?? false);
+        SplitViewGrid.IsVisible = !visible && _mainWindowViewModel.IsSplitView;
         ThumbnailScrollViewer.IsVisible = !visible;
     }
 
     private void ClearPageViews()
     {
         PageControl.SetBitmap(null);
+        PrimarySplitPageControl.SetBitmap(null);
+        SecondarySplitPageControl.SetBitmap(null);
         ContinuousPagePanel.Children.Clear();
         _continuousPageMap.Clear();
     }
@@ -709,7 +851,7 @@ public partial class MainWindow : Window
         var filePath = pickerResult.FirstOrDefault()?.Path.LocalPath;
         if (!string.IsNullOrWhiteSpace(filePath))
         {
-            await OpenFileAsync(filePath).ConfigureAwait(true);
+            _ = await OpenFileAsync(filePath).ConfigureAwait(true);
         }
     }
 
@@ -723,17 +865,28 @@ public partial class MainWindow : Window
         tab.ThumbnailUpdated -= OnThumbnailUpdated;
         tab.CancelThumbnailGeneration();
         _bookmarkMap.Remove(tab);
+        StopTrackingFileChanges(tab);
         foreach (var key in _selectionHighlightMap.Keys.Where(key => ReferenceEquals(key.Tab, tab)).ToArray())
         {
             _selectionHighlightMap.Remove(key);
         }
+        if (ReferenceEquals(_splitSecondaryTab, tab))
+        {
+            _splitSecondaryTab = null;
+            _mainWindowViewModel.SplitSecondaryTab = null;
+        }
         _pdfRenderService.Close(tab.Document);
         tab.Dispose();
+        _mainWindowViewModel.Tabs = new System.Collections.ObjectModel.ObservableCollection<TabViewModel>(_tabs);
 
         if (_tabs.Count == 0)
         {
             _activeTab = null;
+            _mainWindowViewModel.ActiveTab = null;
+            _mainWindowViewModel.IsSplitView = false;
+            CleanupSplitDetachedTabs();
             RebuildTabBar();
+            RebuildSplitTabSelectors();
             RebuildThumbnailPanel();
             CancelRender();
             ClearPageViews();
@@ -743,6 +896,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        RebuildSplitTabSelectors();
         ActivateTab(_tabs[Math.Max(0, _tabs.Count - 1)]);
     }
 
@@ -876,8 +1030,20 @@ public partial class MainWindow : Window
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        SaveSessionSettings();
         CancelRender();
         CancelSearch();
+        foreach (var watcher in _watchers.Values.ToArray())
+        {
+            watcher.Dispose();
+        }
+        _watchers.Clear();
+        foreach (var detached in _splitDetachedTabs.ToArray())
+        {
+            detached.Dispose();
+            _splitDetachedTabs.Remove(detached);
+        }
+
         foreach (var tab in _tabs.ToArray())
         {
             CloseTab(tab);
@@ -1042,61 +1208,66 @@ public partial class MainWindow : Window
 
     private void OnFirstPageClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        if (_activeTab is null)
+        var targetTab = GetCommandTargetTab();
+        if (targetTab is null)
         {
             return;
         }
 
-        _activeTab.MoveFirstPageCommand.Execute(null);
+        targetTab.MoveFirstPageCommand.Execute(null);
         RebuildThumbnailPanel();
         _ = RenderActiveTabAsync();
     }
 
     private void OnPreviousPageClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        if (_activeTab is null)
+        var targetTab = GetCommandTargetTab();
+        if (targetTab is null)
         {
             return;
         }
 
-        _activeTab.MovePreviousPageCommand.Execute(null);
+        targetTab.MovePreviousPageCommand.Execute(null);
         RebuildThumbnailPanel();
         _ = RenderActiveTabAsync();
     }
 
     private void OnNextPageClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        if (_activeTab is null)
+        var targetTab = GetCommandTargetTab();
+        if (targetTab is null)
         {
             return;
         }
 
-        _activeTab.MoveNextPageCommand.Execute(null);
+        targetTab.MoveNextPageCommand.Execute(null);
         RebuildThumbnailPanel();
         _ = RenderActiveTabAsync();
     }
 
     private void OnLastPageClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        if (_activeTab is null)
+        var targetTab = GetCommandTargetTab();
+        if (targetTab is null)
         {
             return;
         }
 
-        _activeTab.MoveLastPageCommand.Execute(null);
+        targetTab.MoveLastPageCommand.Execute(null);
         RebuildThumbnailPanel();
         _ = RenderActiveTabAsync();
     }
 
     private void OnPageNumberTextBoxKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key != Key.Enter || _activeTab is null)
+        var targetTab = GetCommandTargetTab();
+        if (e.Key != Key.Enter || targetTab is null)
         {
             return;
         }
 
-        _activeTab.PageInputText = PageNumberTextBox.Text ?? string.Empty;
-        _activeTab.JumpFromInput();
+        targetTab.PageInputText = PageNumberTextBox.Text ?? string.Empty;
+        targetTab.JumpFromInput();
         RebuildThumbnailPanel();
         _ = RenderActiveTabAsync();
         e.Handled = true;
@@ -1104,29 +1275,32 @@ public partial class MainWindow : Window
 
     private void OnZoomOutClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        if (_activeTab is null)
+        var targetTab = GetCommandTargetTab();
+        if (targetTab is null)
         {
             return;
         }
 
-        _activeTab.ZoomOutCommand.Execute(null);
+        targetTab.ZoomOutCommand.Execute(null);
         _ = RenderActiveTabAsync();
     }
 
     private void OnZoomInClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        if (_activeTab is null)
+        var targetTab = GetCommandTargetTab();
+        if (targetTab is null)
         {
             return;
         }
 
-        _activeTab.ZoomInCommand.Execute(null);
+        targetTab.ZoomInCommand.Execute(null);
         _ = RenderActiveTabAsync();
     }
 
     private void OnZoomComboBoxSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (_activeTab is null || ZoomComboBox.SelectedItem is not ComboBoxItem selected)
+        var targetTab = GetCommandTargetTab();
+        if (targetTab is null || ZoomComboBox.SelectedItem is not ComboBoxItem selected)
         {
             return;
         }
@@ -1134,19 +1308,19 @@ public partial class MainWindow : Window
         var option = selected.Content?.ToString() ?? string.Empty;
         if (option.EndsWith('%') && double.TryParse(option.TrimEnd('%'), out var percent))
         {
-            _activeTab.ZoomLevel = PdfiumRenderService.ClampZoomLevel(percent / 100d);
+            targetTab.ZoomLevel = PdfiumRenderService.ClampZoomLevel(percent / 100d);
         }
         else if (string.Equals(option, "幅に合わせる", StringComparison.Ordinal))
         {
-            _activeTab.FitToWidth(SinglePageScrollViewer.Viewport.Width);
+            targetTab.FitToWidth(SinglePageScrollViewer.Viewport.Width);
         }
         else if (string.Equals(option, "ページに合わせる", StringComparison.Ordinal))
         {
-            _activeTab.FitToPage(SinglePageScrollViewer.Viewport.Width, SinglePageScrollViewer.Viewport.Height);
+            targetTab.FitToPage(SinglePageScrollViewer.Viewport.Width, SinglePageScrollViewer.Viewport.Height);
         }
         else if (string.Equals(option, "実寸", StringComparison.Ordinal))
         {
-            _activeTab.ZoomActualSizeCommand.Execute(null);
+            targetTab.ZoomActualSizeCommand.Execute(null);
         }
         else
         {
@@ -1158,29 +1332,175 @@ public partial class MainWindow : Window
 
     private void OnSinglePageModeClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        if (_activeTab is null)
+        var targetTab = GetCommandTargetTab();
+        if (targetTab is null)
         {
             return;
         }
 
-        _activeTab.SetSinglePageModeCommand.Execute(null);
+        targetTab.SetSinglePageModeCommand.Execute(null);
         _ = RenderActiveTabAsync();
     }
 
     private void OnContinuousModeClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
+        var targetTab = GetCommandTargetTab();
+        if (targetTab is null)
+        {
+            return;
+        }
+
+        targetTab.SetContinuousModeCommand.Execute(null);
+        _ = RenderActiveTabAsync();
+    }
+
+    private void OnTwoPageModeClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        var targetTab = GetCommandTargetTab();
+        if (targetTab is null)
+        {
+            return;
+        }
+
+        targetTab.SetTwoPageModeCommand.Execute(null);
+        _ = RenderActiveTabAsync();
+    }
+
+    private void OnRotateClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        var targetTab = GetCommandTargetTab();
+        if (targetTab is null)
+        {
+            return;
+        }
+
+        targetTab.RotateClockwiseCommand.Execute(null);
+        _ = RenderActiveTabAsync();
+    }
+
+    private void OnSplitViewModeClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
         if (_activeTab is null)
         {
             return;
         }
 
-        _activeTab.SetContinuousModeCommand.Execute(null);
+        _mainWindowViewModel.IsSplitView = !_mainWindowViewModel.IsSplitView;
+        if (_mainWindowViewModel.IsSplitView)
+        {
+            EnsureSplitSecondaryTab();
+        }
+        else
+        {
+            CleanupSplitDetachedTabs();
+        }
+
+        RebuildSplitTabSelectors();
+        UpdateToolbarState();
         _ = RenderActiveTabAsync();
+    }
+
+    private void OnRecentFilesClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        RebuildRecentFilesMenu();
+        if (RecentFilesButton.ContextMenu is { } menu)
+        {
+            menu.PlacementTarget = RecentFilesButton;
+            menu.Open();
+        }
+    }
+
+    private void OnPrimarySplitTabSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (PrimarySplitTabComboBox.SelectedIndex < 0 || PrimarySplitTabComboBox.SelectedIndex >= _tabs.Count)
+        {
+            return;
+        }
+
+        ActivateTab(_tabs[PrimarySplitTabComboBox.SelectedIndex]);
+    }
+
+    private void OnSecondarySplitTabSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (SecondarySplitTabComboBox.SelectedIndex < 0 || SecondarySplitTabComboBox.SelectedIndex >= _tabs.Count)
+        {
+            return;
+        }
+
+        var selectedTab = _tabs[SecondarySplitTabComboBox.SelectedIndex];
+        if (ReferenceEquals(selectedTab, _activeTab))
+        {
+            CleanupSplitDetachedTabs();
+            EnsureSplitSecondaryTab();
+        }
+        else
+        {
+            CleanupSplitDetachedTabs();
+            _splitSecondaryTab = selectedTab;
+        }
+
+        _mainWindowViewModel.SplitSecondaryTab = _splitSecondaryTab;
+        _isSplitRightPaneActive = true;
+        _ = RenderActiveTabAsync();
+    }
+
+    private void OnPrimarySplitPagePointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _isSplitRightPaneActive = false;
+    }
+
+    private void OnSecondarySplitPagePointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _isSplitRightPaneActive = true;
+    }
+
+    private void OnSplitDividerPointerEntered(object? sender, PointerEventArgs e)
+    {
+        SplitDivider.Background = new SolidColorBrush((Color)Application.Current!.FindResource("Accent")!);
+    }
+
+    private void OnSplitDividerPointerExited(object? sender, PointerEventArgs e)
+    {
+        if (!_isSplitDividerDragging)
+        {
+            SplitDivider.Background = new SolidColorBrush((Color)Application.Current!.FindResource("BorderLight")!);
+        }
+    }
+
+    private void OnSplitDividerPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (_mainWindowViewModel.IsSplitView)
+        {
+            _isSplitDividerDragging = true;
+            e.Pointer.Capture(SplitDivider);
+        }
+    }
+
+    private void OnSplitDividerPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (!_isSplitDividerDragging || !_mainWindowViewModel.IsSplitView)
+        {
+            return;
+        }
+
+        var point = e.GetPosition(SplitViewGrid);
+        var totalWidth = Math.Max(1d, SplitViewGrid.Bounds.Width - 3d);
+        var leftWidth = Math.Clamp(point.X, SplitPaneMinWidthPx, totalWidth - SplitPaneMinWidthPx);
+        SplitViewGrid.ColumnDefinitions[0].Width = new GridLength(leftWidth, GridUnitType.Pixel);
+        SplitViewGrid.ColumnDefinitions[2].Width = new GridLength(totalWidth - leftWidth, GridUnitType.Pixel);
+    }
+
+    private void OnSplitDividerPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        _isSplitDividerDragging = false;
+        e.Pointer.Capture(null);
+        SplitDivider.Background = new SolidColorBrush((Color)Application.Current!.FindResource("BorderLight")!);
     }
 
     private void OnWindowPointerWheelChanged(object? sender, PointerWheelEventArgs e)
     {
-        if (_activeTab is null)
+        var targetTab = GetCommandTargetTab();
+        if (targetTab is null)
         {
             return;
         }
@@ -1190,27 +1510,40 @@ public partial class MainWindow : Window
             return;
         }
 
-        _activeTab.ZoomLevel = PdfiumRenderService.ClampZoomLevel(_activeTab.ZoomLevel + (e.Delta.Y > 0 ? 0.1d : -0.1d));
+        targetTab.ZoomLevel = PdfiumRenderService.ClampZoomLevel(targetTab.ZoomLevel + (e.Delta.Y > 0 ? 0.1d : -0.1d));
         _ = RenderActiveTabAsync();
         e.Handled = true;
     }
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
-        if (_activeTab is null)
+        if (e.Key == Key.F11)
+        {
+            WindowState = WindowState == WindowState.FullScreen ? WindowState.Normal : WindowState.FullScreen;
+            e.Handled = true;
+            return;
+        }
+
+        var targetTab = GetCommandTargetTab();
+        if (targetTab is null)
         {
             return;
         }
 
         if ((e.KeyModifiers & KeyModifiers.Control) != 0 && e.Key == Key.W)
         {
-            CloseTab(_activeTab);
+            CloseTab(targetTab);
             e.Handled = true;
             return;
         }
 
         if ((e.KeyModifiers & KeyModifiers.Control) != 0 && e.Key == Key.F)
         {
+            if (_activeTab is null)
+            {
+                return;
+            }
+
             _activeTab.IsSearchVisible = true;
             UpdateSearchOverlayState();
             SearchTextBox.Focus();
@@ -1240,18 +1573,23 @@ public partial class MainWindow : Window
         switch (e.Key)
         {
             case Key.Left:
-                _activeTab.MovePreviousPageCommand.Execute(null);
+                targetTab.MovePreviousPageCommand.Execute(null);
                 break;
             case Key.Right:
-                _activeTab.MoveNextPageCommand.Execute(null);
+                targetTab.MoveNextPageCommand.Execute(null);
                 break;
             case Key.Home:
-                _activeTab.MoveFirstPageCommand.Execute(null);
+                targetTab.MoveFirstPageCommand.Execute(null);
                 break;
             case Key.End:
-                _activeTab.MoveLastPageCommand.Execute(null);
+                targetTab.MoveLastPageCommand.Execute(null);
                 break;
             case Key.Escape:
+                if (_activeTab is null)
+                {
+                    return;
+                }
+
                 _activeTab.IsSearchVisible = false;
                 UpdateSearchOverlayState();
                 e.Handled = true;
@@ -1263,6 +1601,259 @@ public partial class MainWindow : Window
         RebuildThumbnailPanel();
         _ = RenderActiveTabAsync();
         e.Handled = true;
+    }
+
+    private void OnOpened(object? sender, EventArgs e)
+    {
+        if (_restoreAttempted)
+        {
+            return;
+        }
+
+        _restoreAttempted = true;
+        if (_skipSessionRestore || !_settings.RestoreSessionOnStartup || _settings.LastSession.Count == 0)
+        {
+            return;
+        }
+
+        _ = RestoreLastSessionAsync();
+    }
+
+    private async Task RestoreLastSessionAsync()
+    {
+        foreach (var entry in _settings.LastSession.Where(entry => File.Exists(entry.FilePath)))
+        {
+            var opened = await OpenFileAsync(entry.FilePath, entry.PageNumber, activate: false).ConfigureAwait(true);
+            if (opened is not null)
+            {
+                opened.JumpToPage(entry.PageNumber);
+            }
+        }
+
+        if (_tabs.Count > 0)
+        {
+            ActivateTab(_tabs[0]);
+        }
+    }
+
+    private void ApplySettingsToToolbar()
+    {
+        ZoomComboBox.SelectedIndex = 3;
+    }
+
+    private void RebuildRecentFilesMenu()
+    {
+        var items = new List<object>();
+        foreach (var file in _settingsService.GetRecentFiles())
+        {
+            var item = new MenuItem { Header = file };
+            item.Click += (_, _) => OpenFileWithoutAwait(file);
+            items.Add(item);
+        }
+
+        if (items.Count == 0)
+        {
+            items.Add(new MenuItem { Header = "(履歴なし)", IsEnabled = false });
+        }
+
+        RecentFilesButton.ContextMenu = new ContextMenu { ItemsSource = items };
+    }
+
+    private void RebuildSplitTabSelectors()
+    {
+        var names = _tabs.Select(tab => tab.Title).Cast<object>().ToArray();
+        PrimarySplitTabComboBox.ItemsSource = names;
+        SecondarySplitTabComboBox.ItemsSource = names;
+        PrimarySplitTabComboBox.SelectedIndex = _activeTab is null ? -1 : _tabs.IndexOf(_activeTab);
+        SecondarySplitTabComboBox.SelectedIndex = _splitSecondaryTab is null
+            ? -1
+            : Math.Max(
+                _tabs.IndexOf(_splitSecondaryTab),
+                _activeTab is null || !string.Equals(_splitSecondaryTab.Document.FilePath, _activeTab.Document.FilePath, StringComparison.OrdinalIgnoreCase)
+                    ? -1
+                    : _tabs.IndexOf(_activeTab));
+    }
+
+    private void EnsureSplitSecondaryTab()
+    {
+        if (_activeTab is null)
+        {
+            return;
+        }
+
+        if (_splitSecondaryTab is null)
+        {
+            var detached = new TabViewModel(_activeTab.Document)
+            {
+                CurrentPage = _activeTab.CurrentPage,
+                ZoomLevel = _activeTab.ZoomLevel,
+                IsContinuousMode = false,
+                IsTwoPageMode = _activeTab.IsTwoPageMode,
+                RotationDegrees = _activeTab.RotationDegrees
+            };
+            _splitDetachedTabs.Add(detached);
+            _splitSecondaryTab = detached;
+        }
+
+        _mainWindowViewModel.SplitSecondaryTab = _splitSecondaryTab;
+    }
+
+    private void CleanupSplitDetachedTabs()
+    {
+        foreach (var detached in _splitDetachedTabs.ToArray())
+        {
+            detached.Dispose();
+            _splitDetachedTabs.Remove(detached);
+        }
+
+        _splitSecondaryTab = null;
+        _mainWindowViewModel.SplitSecondaryTab = null;
+        _isSplitRightPaneActive = false;
+    }
+
+    private void TrackFileChanges(TabViewModel tab)
+    {
+        var filePath = tab.Document.FilePath;
+        var directory = Path.GetDirectoryName(filePath);
+        var fileName = Path.GetFileName(filePath);
+        if (string.IsNullOrWhiteSpace(directory) || string.IsNullOrWhiteSpace(fileName) || !Directory.Exists(directory))
+        {
+            return;
+        }
+
+        StopTrackingFileChanges(tab);
+        var watcher = new FileSystemWatcher(directory, fileName)
+        {
+            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName,
+            EnableRaisingEvents = true
+        };
+        FileSystemEventHandler changed = (_, _) => Dispatcher.UIThread.Post(() => PromptReload(tab));
+        RenamedEventHandler renamed = (_, _) => Dispatcher.UIThread.Post(() => PromptReload(tab));
+        watcher.Changed += changed;
+        watcher.Created += changed;
+        watcher.Renamed += renamed;
+        _watchers[tab] = new WatchedFile(watcher, changed, renamed);
+    }
+
+    private void StopTrackingFileChanges(TabViewModel tab)
+    {
+        if (_watchers.Remove(tab, out var watchedFile))
+        {
+            watchedFile.Dispose();
+        }
+    }
+
+    private void PromptReload(TabViewModel tab)
+    {
+        if (!ReferenceEquals(tab, _activeTab) || !IsVisible)
+        {
+            return;
+        }
+
+        _ = PromptReloadAsync(tab);
+    }
+
+    private async Task PromptReloadAsync(TabViewModel tab)
+    {
+        var reload = await ShowReloadConfirmDialogAsync().ConfigureAwait(true);
+        if (!reload || !File.Exists(tab.Document.FilePath))
+        {
+            return;
+        }
+
+        var currentPage = tab.CurrentPage;
+        var filePath = tab.Document.FilePath;
+        CloseTab(tab);
+        _ = await OpenFileAsync(filePath, currentPage).ConfigureAwait(true);
+    }
+
+    private async Task<bool> ShowReloadConfirmDialogAsync()
+    {
+        var dialog = new Window
+        {
+            Width = 320,
+            Height = 150,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Title = "ファイル変更検知",
+            Background = new SolidColorBrush((Color)Application.Current!.FindResource("BgDark")!)
+        };
+
+        var result = false;
+        var panel = new StackPanel { Margin = new Thickness(16), Spacing = 12 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = "外部変更を検知しました。再読み込みしますか？",
+            Foreground = new SolidColorBrush((Color)Application.Current!.FindResource("TextPrimary")!)
+        });
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8 };
+        var noButton = new Button { Content = "いいえ" };
+        var yesButton = new Button { Content = "はい" };
+        noButton.Click += (_, _) => dialog.Close();
+        yesButton.Click += (_, _) =>
+        {
+            result = true;
+            dialog.Close();
+        };
+        buttons.Children.Add(noButton);
+        buttons.Children.Add(yesButton);
+        panel.Children.Add(buttons);
+        dialog.Content = panel;
+        await dialog.ShowDialog(this).ConfigureAwait(true);
+        return result;
+    }
+
+    private void SaveSessionSettings()
+    {
+        var session = _tabs
+            .Select(tab => new SessionEntry(tab.Document.FilePath, tab.CurrentPage))
+            .ToArray();
+        var recent = _settingsService.GetRecentFiles();
+        _settings = _settings with { LastSession = session, RecentFiles = recent };
+        _settingsService.Save(_settings);
+    }
+
+    private static SKBitmap RotateBitmap(SKBitmap source, int degrees)
+    {
+        var normalized = ((degrees % 360) + 360) % 360;
+        if (normalized == 0)
+        {
+            return source.Copy();
+        }
+
+        var swapSize = normalized is 90 or 270;
+        var width = swapSize ? source.Height : source.Width;
+        var height = swapSize ? source.Width : source.Height;
+        var rotated = new SKBitmap(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
+        using var canvas = new SKCanvas(rotated);
+        canvas.Clear(SKColors.Transparent);
+        canvas.Translate(width / 2f, height / 2f);
+        canvas.RotateDegrees(normalized);
+        canvas.Translate(-source.Width / 2f, -source.Height / 2f);
+        canvas.DrawBitmap(source, 0, 0);
+        return rotated;
+    }
+
+    private sealed class WatchedFile : IDisposable
+    {
+        private readonly FileSystemWatcher _watcher;
+        private readonly FileSystemEventHandler _changedHandler;
+        private readonly RenamedEventHandler _renamedHandler;
+
+        public WatchedFile(FileSystemWatcher watcher, FileSystemEventHandler changedHandler, RenamedEventHandler renamedHandler)
+        {
+            _watcher = watcher;
+            _changedHandler = changedHandler;
+            _renamedHandler = renamedHandler;
+        }
+
+        public void Dispose()
+        {
+            _watcher.Changed -= _changedHandler;
+            _watcher.Created -= _changedHandler;
+            _watcher.Renamed -= _renamedHandler;
+            _watcher.Dispose();
+        }
     }
 
     private void OpenFileWithoutAwait(string filePath)
