@@ -83,6 +83,49 @@ public class PdfiumRenderServiceTests
     }
 
     [Fact]
+    public async Task PdfScenario_OpenNavigateAnnotateSaveReopen_KeepsAnnotation()
+    {
+        var service = new AnnotationService();
+        var pages = new[]
+        {
+            new PdfPage(IntPtr.Zero, 0, 595, 842),
+            new PdfPage(IntPtr.Zero, 1, 595, 842),
+            new PdfPage(IntPtr.Zero, 2, 595, 842)
+        };
+        using var opened = new PdfDocument("sample.pdf", IntPtr.Zero, pages, _ => { });
+
+        var currentPage = 1;
+        currentPage++;
+        opened.AddAnnotation(new CommentAnnotation
+        {
+            PageNumber = currentPage,
+            Bounds = new PdfTextBounds(12, 24, 60, 18),
+            Text = "integration",
+            Comment = "saved"
+        });
+
+        var path = Path.Combine(Path.GetTempPath(), $"acropdf-{Guid.NewGuid():N}.fdf");
+        try
+        {
+            await service.ExportAsFdfAsync(opened, path);
+            using var reopened = new PdfDocument("sample.pdf", IntPtr.Zero, pages, _ => { });
+            await service.ImportFdfAsync(reopened, path);
+
+            var comment = Assert.Single(reopened.Annotations.OfType<CommentAnnotation>());
+            Assert.Equal(2, comment.PageNumber);
+            Assert.Equal("integration", comment.Text);
+            Assert.Equal("saved", comment.Comment);
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Fact]
     public void ExpandToPdfiumCharEvents_BmpCharacter_ReturnsSingleCodeUnit()
     {
         var actual = InvokeExpandToPdfiumCharEvents("A");

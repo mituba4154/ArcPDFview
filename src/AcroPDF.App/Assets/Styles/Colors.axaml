@@ -24,6 +24,18 @@
   <Color x:Key="Light.TextSecondary">#555555</Color>
   <Color x:Key="Light.Border">#d0d0d0</Color>
 
+  <Color x:Key="HighContrast.BgDark">#000000</Color>
+  <Color x:Key="HighContrast.BgPanel">#000000</Color>
+  <Color x:Key="HighContrast.BgPanel2">#000000</Color>
+  <Color x:Key="HighContrast.BgToolbar">#000000</Color>
+  <Color x:Key="HighContrast.TextPrimary">#ffffff</Color>
+  <Color x:Key="HighContrast.TextSecondary">#ffffff</Color>
+  <Color x:Key="HighContrast.TextDim">#ffffff</Color>
+  <Color x:Key="HighContrast.Border">#ffffff</Color>
+  <Color x:Key="HighContrast.BorderLight">#ffff00</Color>
+  <Color x:Key="HighContrast.Accent">#ffff00</Color>
+  <Color x:Key="HighContrast.Accent2">#00ffff</Color>
+
   <SolidColorBrush x:Key="BgDarkBrush" Color="{DynamicResource BgDark}" />
   <SolidColorBrush x:Key="BgPanelBrush" Color="{DynamicResource BgPanel}" />
   <SolidColorBrush x:Key="BgPanel2Brush" Color="{DynamicResource BgPanel2}" />

@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:AcroPDF.App.Controls"
+        xmlns:automation="clr-namespace:Avalonia.Automation;assembly=Avalonia.Controls"
         x:Class="AcroPDF.App.Views.MainWindow"
         Title="AcroPDF"
         Width="1280"
@@ -19,8 +20,13 @@
         </Transitions>
       </Setter>
     </Style>
+    <Style Selector="Button:focus-visible, ToggleButton:focus-visible, TextBox:focus-visible, ComboBox:focus-visible, CheckBox:focus-visible, TabItem:focus-visible, ListBoxItem:focus-visible">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
+    </Style>
   </Window.Styles>
-  <Grid RowDefinitions="36,40,*,22">
+  <Grid RowDefinitions="36,40,*,22"
+        KeyboardNavigation.TabNavigation="Cycle">
     <Border Grid.Row="0"
             Background="{DynamicResource BgDarkBrush}"
             BorderBrush="{DynamicResource BorderBrush}"
@@ -34,6 +40,7 @@
                 BorderThickness="0"
                 Foreground="{DynamicResource TextPrimaryBrush}"
                 Content="+"
+                automation:AutomationProperties.Name="タブ追加"
                 Click="OnAddTabClicked" />
         <ScrollViewer HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Disabled">
@@ -55,35 +62,43 @@
           <Button x:Name="OpenFileButton"
                   Content="開く"
                   Padding="10,2"
+                  automation:AutomationProperties.Name="PDFファイルを開く"
                   Click="OnOpenFileClicked" />
           <Button x:Name="RecentFilesButton"
                   Content="最近"
                   Padding="10,2"
+                  automation:AutomationProperties.Name="最近開いたファイル"
                   Click="OnRecentFilesClicked" />
           <Separator Margin="4,0" />
           <ToggleButton x:Name="HighlightToolButton"
                         Content="🖊"
+                        automation:AutomationProperties.Name="ハイライトツール"
                         ToolTip.Tip="ハイライトツール"
                         Click="OnHighlightToolClicked" />
           <ToggleButton x:Name="CommentToolButton"
                         Content="💬"
+                        automation:AutomationProperties.Name="コメントツール"
                         ToolTip.Tip="コメントツール"
                         Click="OnCommentToolClicked" />
           <ToggleButton x:Name="FreehandToolButton"
                         Content="✍"
+                        automation:AutomationProperties.Name="フリーハンドツール"
                         ToolTip.Tip="フリーハンドツール"
                         Click="OnFreehandToolClicked" />
           <ToggleButton x:Name="ShapeToolButton"
                         Content="□"
+                        automation:AutomationProperties.Name="図形ツール"
                         ToolTip.Tip="図形ツール"
                         Click="OnShapeToolClicked" />
           <ToggleButton x:Name="StampToolButton"
                         Content="🏷"
+                        automation:AutomationProperties.Name="スタンプツール"
                         ToolTip.Tip="スタンプツール"
                         Click="OnStampToolClicked" />
           <ComboBox x:Name="ShapeTypeComboBox"
                     Width="88"
                     SelectedIndex="0"
+                    automation:AutomationProperties.Name="図形種別"
                     SelectionChanged="OnShapeTypeChanged">
             <ComboBoxItem Content="矩形" />
             <ComboBoxItem Content="楕円" />
@@ -93,6 +108,7 @@
           <ComboBox x:Name="StrokeColorComboBox"
                     Width="78"
                     SelectedIndex="0"
+                    automation:AutomationProperties.Name="線色"
                     SelectionChanged="OnStrokeStyleChanged">
             <ComboBoxItem Content="赤" />
             <ComboBoxItem Content="緑" />
@@ -103,6 +119,7 @@
           <ComboBox x:Name="FillColorComboBox"
                     Width="78"
                     SelectedIndex="0"
+                    automation:AutomationProperties.Name="塗り色"
                     SelectionChanged="OnStrokeStyleChanged">
             <ComboBoxItem Content="なし" />
             <ComboBoxItem Content="赤" />
@@ -113,6 +130,7 @@
           <ComboBox x:Name="StrokeWidthComboBox"
                     Width="72"
                     SelectedIndex="1"
+                    automation:AutomationProperties.Name="線幅"
                     SelectionChanged="OnStrokeStyleChanged">
             <ComboBoxItem Content="1px" />
             <ComboBoxItem Content="2px" />
@@ -128,14 +146,17 @@
                     Spacing="4">
           <Button Content="⟨⟨"
                   Width="30"
+                  automation:AutomationProperties.Name="先頭ページへ移動"
                   Click="OnFirstPageClicked" />
           <Button Content="⟨"
                   Width="30"
+                  automation:AutomationProperties.Name="前のページへ移動"
                   Click="OnPreviousPageClicked" />
           <TextBox x:Name="PageNumberTextBox"
                    Width="56"
                    HorizontalContentAlignment="Center"
                    VerticalContentAlignment="Center"
+                   automation:AutomationProperties.Name="ページ番号入力"
                    KeyDown="OnPageNumberTextBoxKeyDown" />
           <TextBlock x:Name="TotalPageTextBlock"
                      VerticalAlignment="Center"
@@ -143,9 +164,11 @@
                      Text="/ 0" />
           <Button Content="⟩"
                   Width="30"
+                  automation:AutomationProperties.Name="次のページへ移動"
                   Click="OnNextPageClicked" />
           <Button Content="⟩⟩"
                   Width="30"
+                  automation:AutomationProperties.Name="最終ページへ移動"
                   Click="OnLastPageClicked" />
         </StackPanel>
 
@@ -154,9 +177,11 @@
                     Spacing="4">
           <Button Content="−"
                   Width="30"
+                  automation:AutomationProperties.Name="ズームアウト"
                   Click="OnZoomOutClicked" />
           <ComboBox x:Name="ZoomComboBox"
                     Width="140"
+                    automation:AutomationProperties.Name="ズーム倍率"
                     SelectionChanged="OnZoomComboBoxSelectionChanged">
             <ComboBoxItem Content="25%" />
             <ComboBoxItem Content="50%" />
@@ -173,6 +198,7 @@
           </ComboBox>
           <Button Content="+"
                   Width="30"
+                  automation:AutomationProperties.Name="ズームイン"
                   Click="OnZoomInClicked" />
         </StackPanel>
 
@@ -182,25 +208,32 @@
                     Spacing="4">
           <ToggleButton x:Name="SinglePageModeButton"
                         Content="▣ 単ページ"
+                        automation:AutomationProperties.Name="単ページモード"
                         Click="OnSinglePageModeClicked" />
           <ToggleButton x:Name="ContinuousModeButton"
                         Content="⊟ 連続"
+                        automation:AutomationProperties.Name="連続表示モード"
                         Click="OnContinuousModeClicked" />
           <ToggleButton x:Name="TwoPageModeButton"
                         Content="▥ 見開き"
+                        automation:AutomationProperties.Name="見開きモード"
                         Click="OnTwoPageModeClicked" />
           <ToggleButton x:Name="SplitViewModeButton"
                         Content="⊞ 分割"
+                        automation:AutomationProperties.Name="分割表示モード"
                         Click="OnSplitViewModeClicked" />
           <Button x:Name="RotateButton"
                   Content="⟳ 回転"
+                  automation:AutomationProperties.Name="ページ回転"
                   Click="OnRotateClicked" />
           <Button x:Name="PrintButton"
                   Content="🖨 印刷"
+                  automation:AutomationProperties.Name="印刷"
                   Click="OnPrintClicked" />
           <ComboBox x:Name="ThemeComboBox"
                     Width="110"
                     SelectedIndex="0"
+                    automation:AutomationProperties.Name="テーマ選択"
                     SelectionChanged="OnThemeSelectionChanged">
             <ComboBoxItem Content="OS" />
             <ComboBoxItem Content="Light" />
@@ -217,7 +250,8 @@
               Background="{DynamicResource BgPanelBrush}"
               BorderBrush="{DynamicResource BorderBrush}"
               BorderThickness="0,0,1,0">
-          <TabControl x:Name="LeftSidebarTabControl">
+          <TabControl x:Name="LeftSidebarTabControl"
+                      automation:AutomationProperties.Name="左サイドバータブ">
           <TabItem Header="サムネイル">
             <ScrollViewer x:Name="ThumbnailScrollViewer"
                           HorizontalScrollBarVisibility="Disabled"
@@ -238,14 +272,16 @@
           </TabItem>
           <TabItem Header="添付">
             <DockPanel Margin="8">
-              <Button x:Name="ExtractAttachmentButton"
-                      DockPanel.Dock="Bottom"
-                      Margin="0,8,0,0"
-                      Content="保存"
-                      IsEnabled="False"
-                      Click="OnExtractAttachmentClicked" />
-              <ListBox x:Name="AttachmentListBox"
-                       SelectionChanged="OnAttachmentSelectionChanged" />
+               <Button x:Name="ExtractAttachmentButton"
+                       DockPanel.Dock="Bottom"
+                       Margin="0,8,0,0"
+                       Content="保存"
+                       IsEnabled="False"
+                       automation:AutomationProperties.Name="添付ファイルを保存"
+                       Click="OnExtractAttachmentClicked" />
+               <ListBox x:Name="AttachmentListBox"
+                        automation:AutomationProperties.Name="添付ファイル一覧"
+                        SelectionChanged="OnAttachmentSelectionChanged" />
             </DockPanel>
           </TabItem>
           </TabControl>
@@ -266,6 +302,7 @@
             <controls:PdfPageControl x:Name="PageControl"
                                       HorizontalAlignment="Center"
                                       VerticalAlignment="Top"
+                                      automation:AutomationProperties.Name="PDFページビュー"
                                       PointerMoved="OnSinglePagePointerMoved"
                                       PointerPressed="OnSinglePagePointerPressed"
                                       PointerReleased="OnSinglePagePointerReleased" />
@@ -300,6 +337,7 @@
               <ComboBox x:Name="PrimarySplitTabComboBox"
                         DockPanel.Dock="Top"
                         Margin="8"
+                        automation:AutomationProperties.Name="左ペインのタブ選択"
                         SelectionChanged="OnPrimarySplitTabSelectionChanged" />
               <ScrollViewer x:Name="PrimarySplitScrollViewer"
                             HorizontalScrollBarVisibility="Auto"
@@ -329,6 +367,7 @@
               <ComboBox x:Name="SecondarySplitTabComboBox"
                         DockPanel.Dock="Top"
                         Margin="8"
+                        automation:AutomationProperties.Name="右ペインのタブ選択"
                         SelectionChanged="OnSecondarySplitTabSelectionChanged" />
               <ScrollViewer x:Name="SecondarySplitScrollViewer"
                             HorizontalScrollBarVisibility="Auto"
@@ -358,6 +397,7 @@
               <TextBox x:Name="SearchTextBox"
                        Width="200"
                        Watermark="検索"
+                       automation:AutomationProperties.Name="検索キーワード"
                        TextChanged="OnSearchTextChanged" />
               <TextBlock x:Name="SearchCountTextBlock"
                          VerticalAlignment="Center"
@@ -365,22 +405,27 @@
                          Text="0/0件" />
               <Button Content="∧"
                       Width="26"
+                      automation:AutomationProperties.Name="前の検索結果"
                       Click="OnSearchPreviousClicked" />
               <Button Content="∨"
                       Width="26"
+                      automation:AutomationProperties.Name="次の検索結果"
                       Click="OnSearchNextClicked" />
               <Button Content="×"
                       Width="26"
+                      automation:AutomationProperties.Name="検索を閉じる"
                       Click="OnSearchCloseClicked" />
             </StackPanel>
             <StackPanel Orientation="Horizontal"
                         Spacing="12">
               <CheckBox x:Name="CaseSensitiveSearchCheckBox"
                         Content="Aa"
+                        automation:AutomationProperties.Name="大文字小文字を区別"
                         Foreground="{DynamicResource TextPrimaryBrush}"
                         Click="OnSearchOptionChanged" />
               <CheckBox x:Name="RegexSearchCheckBox"
                         Content=".*"
+                        automation:AutomationProperties.Name="正規表現検索"
                         Foreground="{DynamicResource TextPrimaryBrush}"
                         Click="OnSearchOptionChanged" />
             </StackPanel>
@@ -399,22 +444,31 @@
           <StackPanel Orientation="Horizontal"
                       Spacing="6">
             <Button Content="ハイライト"
+                    automation:AutomationProperties.Name="選択範囲をハイライト"
                     Click="OnFloatingHighlightClicked" />
             <Button Content="下線"
+                    automation:AutomationProperties.Name="選択範囲に下線"
                     Click="OnFloatingUnderlineClicked" />
             <Button Content="取り消し線"
+                    automation:AutomationProperties.Name="選択範囲に取り消し線"
                     Click="OnFloatingStrikeClicked" />
             <Button Content="コメント"
+                    automation:AutomationProperties.Name="コメント注釈を追加"
                     Click="OnFloatingCommentClicked" />
             <Button Content="手書き"
+                    automation:AutomationProperties.Name="手書き注釈モード"
                     Click="OnFloatingFreehandClicked" />
             <Button Content="矩形"
+                    automation:AutomationProperties.Name="矩形注釈を追加"
                     Click="OnFloatingRectangleClicked" />
             <Button Content="楕円"
+                    automation:AutomationProperties.Name="楕円注釈を追加"
                     Click="OnFloatingEllipseClicked" />
             <Button Content="矢印"
+                    automation:AutomationProperties.Name="矢印注釈を追加"
                     Click="OnFloatingArrowClicked" />
             <Button Content="スタンプ"
+                    automation:AutomationProperties.Name="スタンプ注釈を追加"
                     Click="OnFloatingStampClicked" />
           </StackPanel>
         </Border>
@@ -499,20 +553,24 @@
             </Border>
           </StackPanel>
           <ListBox x:Name="AnnotationPanelListBox"
-                   Grid.Row="1"
-                   Margin="0,8,0,8"
-                   SelectionChanged="OnAnnotationPanelSelectionChanged" />
+                    Grid.Row="1"
+                    Margin="0,8,0,8"
+                    automation:AutomationProperties.Name="注釈カード一覧"
+                    SelectionChanged="OnAnnotationPanelSelectionChanged" />
           <StackPanel Grid.Row="2"
                       Orientation="Horizontal"
                       Spacing="6">
             <Button x:Name="DeleteAnnotationButton"
                     Content="削除"
+                    automation:AutomationProperties.Name="選択した注釈を削除"
                     Click="OnDeleteAnnotationClicked" />
             <Button x:Name="ExportFdfButton"
                     Content="FDF エクスポート"
+                    automation:AutomationProperties.Name="注釈をFDFで書き出し"
                     Click="OnExportFdfClicked" />
             <Button x:Name="ImportFdfButton"
                     Content="FDF インポート"
+                    automation:AutomationProperties.Name="注釈をFDFから読み込み"
                     Click="OnImportFdfClicked" />
           </StackPanel>
           <StackPanel Grid.Row="3"
