@@ -314,11 +314,87 @@ public sealed class PdfPageControl : SKGLControlView
             {
                 Color = color,
                 IsAntialias = true,
-                StrokeWidth = 2f,
+                StrokeWidth = (float)Math.Max(1d, annotation.StrokeWidth),
                 Style = SKPaintStyle.Stroke
             };
 
-            if (annotation.Kind == AnnotationVisualKind.Underline)
+            if (annotation.Kind == AnnotationVisualKind.Freehand && annotation.Points is { Count: > 1 })
+            {
+                for (var index = 1; index < annotation.Points.Count; index++)
+                {
+                    var from = annotation.Points[index - 1];
+                    var to = annotation.Points[index];
+                    canvas.DrawLine(
+                        destinationRect.Left + (float)(from.X * scaleX),
+                        destinationRect.Top + (float)(from.Y * scaleY),
+                        destinationRect.Left + (float)(to.X * scaleX),
+                        destinationRect.Top + (float)(to.Y * scaleY),
+                        linePaint);
+                }
+            }
+            else if (annotation.Kind == AnnotationVisualKind.Rectangle)
+            {
+                if (annotation.FillColor is Color fillColor)
+                {
+                    using var fillPaint = new SKPaint
+                    {
+                        Color = new SKColor(fillColor.R, fillColor.G, fillColor.B, fillColor.A),
+                        IsAntialias = true,
+                        Style = SKPaintStyle.Fill
+                    };
+                    canvas.DrawRect(rect, fillPaint);
+                }
+
+                canvas.DrawRect(rect, linePaint);
+            }
+            else if (annotation.Kind == AnnotationVisualKind.Ellipse)
+            {
+                if (annotation.FillColor is Color fillColor)
+                {
+                    using var fillPaint = new SKPaint
+                    {
+                        Color = new SKColor(fillColor.R, fillColor.G, fillColor.B, fillColor.A),
+                        IsAntialias = true,
+                        Style = SKPaintStyle.Fill
+                    };
+                    canvas.DrawOval(rect, fillPaint);
+                }
+
+                canvas.DrawOval(rect, linePaint);
+            }
+            else if (annotation.Kind == AnnotationVisualKind.Line || annotation.Kind == AnnotationVisualKind.Arrow)
+            {
+                var start = new SKPoint(rect.Left, rect.Top);
+                var end = new SKPoint(rect.Right, rect.Bottom);
+                canvas.DrawLine(start, end, linePaint);
+                if (annotation.Kind == AnnotationVisualKind.Arrow)
+                {
+                    DrawArrowHead(canvas, linePaint, start, end);
+                }
+            }
+            else if (annotation.Kind == AnnotationVisualKind.Stamp)
+            {
+                using var fillPaint = new SKPaint
+                {
+                    Color = color.WithAlpha(64),
+                    IsAntialias = true,
+                    Style = SKPaintStyle.Fill
+                };
+                canvas.DrawRoundRect(rect, 6f, 6f, fillPaint);
+                canvas.DrawRoundRect(rect, 6f, 6f, linePaint);
+                if (!string.IsNullOrWhiteSpace(annotation.Label))
+                {
+                    using var textPaint = new SKPaint
+                    {
+                        Color = color,
+                        IsAntialias = true,
+                        TextSize = Math.Max(10f, rect.Height * 0.4f),
+                        TextAlign = SKTextAlign.Center
+                    };
+                    canvas.DrawText(annotation.Label, rect.MidX, rect.MidY + (textPaint.TextSize / 3f), textPaint);
+                }
+            }
+            else if (annotation.Kind == AnnotationVisualKind.Underline)
             {
                 canvas.DrawLine(rect.Left, rect.Bottom - 1f, rect.Right, rect.Bottom - 1f, linePaint);
             }
@@ -329,6 +405,29 @@ public sealed class PdfPageControl : SKGLControlView
             }
         }
     }
+
+    private static void DrawArrowHead(SKCanvas canvas, SKPaint paint, SKPoint start, SKPoint end)
+    {
+        var dx = end.X - start.X;
+        var dy = end.Y - start.Y;
+        var len = MathF.Sqrt((dx * dx) + (dy * dy));
+        if (len < 0.01f)
+        {
+            return;
+        }
+
+        var ux = dx / len;
+        var uy = dy / len;
+        var size = Math.Max(8f, paint.StrokeWidth * 3f);
+        var left = new SKPoint(
+            end.X - (ux * size) + (-uy * size * 0.5f),
+            end.Y - (uy * size) + (ux * size * 0.5f));
+        var right = new SKPoint(
+            end.X - (ux * size) - (-uy * size * 0.5f),
+            end.Y - (uy * size) - (ux * size * 0.5f));
+        canvas.DrawLine(end, left, paint);
+        canvas.DrawLine(end, right, paint);
+    }
 }
 
 /// <summary>
@@ -337,7 +436,18 @@ public sealed class PdfPageControl : SKGLControlView
 /// <param name="Bounds">表示矩形。</param>
 /// <param name="Kind">描画種別。</param>
 /// <param name="Color">表示色。</param>
-public readonly record struct AnnotationVisual(Rect Bounds, AnnotationVisualKind Kind, Color Color);
+/// <param name="Points">フリーハンド座標列。</param>
+/// <param name="FillColor">塗り色。</param>
+/// <param name="StrokeWidth">線幅。</param>
+/// <param name="Label">ラベル文字列。</param>
+public readonly record struct AnnotationVisual(
+    Rect Bounds,
+    AnnotationVisualKind Kind,
+    Color Color,
+    IReadOnlyList<Point>? Points = null,
+    Color? FillColor = null,
+    double StrokeWidth = 2d,
+    string? Label = null);
 
 /// <summary>
 /// 注釈描画種別を表します。
@@ -357,5 +467,35 @@ public enum AnnotationVisualKind
     /// <summary>
     /// 取り消し線表示。
     /// </summary>
-    Strikethrough
+    Strikethrough,
+
+    /// <summary>
+    /// フリーハンド描画。
+    /// </summary>
+    Freehand,
+
+    /// <summary>
+    /// 矩形描画。
+    /// </summary>
+    Rectangle,
+
+    /// <summary>
+    /// 楕円描画。
+    /// </summary>
+    Ellipse,
+
+    /// <summary>
+    /// 矢印描画。
+    /// </summary>
+    Arrow,
+
+    /// <summary>
+    /// 線描画。
+    /// </summary>
+    Line,
+
+    /// <summary>
+    /// スタンプ描画。
+    /// </summary>
+    Stamp
 }

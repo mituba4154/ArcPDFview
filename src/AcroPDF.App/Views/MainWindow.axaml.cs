@@ -58,6 +58,13 @@ public partial class MainWindow : Window
     private PdfPage? _selectionPage;
     private Point _selectionStartPdfPoint;
     private string _selectedText = string.Empty;
+    private AnnotationTool _activeAnnotationTool = AnnotationTool.TextSelect;
+    private ShapeType _activeShapeType = ShapeType.Rectangle;
+    private string _activeStrokeColorHex = "#ff0000";
+    private string? _activeFillColorHex;
+    private double _activeStrokeWidth = 2d;
+    private readonly List<AnnotationPoint> _currentFreehandStroke = [];
+    private Point? _shapeStartPdfPoint;
 
     /// <summary>
     /// <see cref="MainWindow"/> の新しいインスタンスを初期化します。
@@ -90,6 +97,7 @@ public partial class MainWindow : Window
         DataContext = _mainWindowViewModel;
         SplitDivider.Cursor = new Cursor(StandardCursorType.SizeWestEast);
         ApplySettingsToToolbar();
+        InitializeAnnotationTooling();
         RebuildRecentFilesMenu();
     }
 
@@ -205,6 +213,8 @@ public partial class MainWindow : Window
         UpdateToolbarState();
         RebuildThumbnailPanel();
         RebuildBookmarkPanel();
+        RebuildAnnotationPanel();
+        UpdateFileInfoPanel();
         UpdateSearchOverlayState();
         _ = RenderActiveTabAsync();
     }
@@ -605,17 +615,72 @@ public partial class MainWindow : Window
 
         control.AnnotationVisuals = tab.Document.Annotations
             .Where(annotation => annotation.PageNumber == page.PageNumber)
-            .OfType<HighlightAnnotation>()
-            .Select(annotation => new AnnotationVisual(
-                ConvertBoundsToPixelRect(annotation.Bounds, page, tab.ZoomLevel),
-                annotation.Type switch
-                {
-                    HighlightType.Underline => AnnotationVisualKind.Underline,
-                    HighlightType.Strikethrough => AnnotationVisualKind.Strikethrough,
-                    _ => AnnotationVisualKind.Highlight
-                },
-                ToAvaloniaColor(annotation.Color)))
+            .SelectMany(annotation => MapAnnotationVisuals(annotation, page, tab.ZoomLevel))
             .ToArray();
+    }
+
+    private static IReadOnlyList<AnnotationVisual> MapAnnotationVisuals(Annotation annotation, PdfPage page, double zoomLevel)
+    {
+        switch (annotation)
+        {
+            case HighlightAnnotation highlight:
+                return
+                [
+                    new AnnotationVisual(
+                        ConvertBoundsToPixelRect(highlight.Bounds, page, zoomLevel),
+                        highlight.Type switch
+                        {
+                            HighlightType.Underline => AnnotationVisualKind.Underline,
+                            HighlightType.Strikethrough => AnnotationVisualKind.Strikethrough,
+                            _ => AnnotationVisualKind.Highlight
+                        },
+                        ToAvaloniaColor(highlight.Color))
+                ];
+            case FreehandAnnotation freehand:
+                return freehand.Strokes
+                    .Where(stroke => stroke.Count > 1)
+                    .Select(stroke => new AnnotationVisual(
+                        ConvertBoundsToPixelRect(freehand.Bounds, page, zoomLevel),
+                        AnnotationVisualKind.Freehand,
+                        ParseColorHex(freehand.StrokeColorHex, Color.FromRgb(255, 0, 0)),
+                        stroke.Select(point => ConvertPdfPointToPixelPoint(point, page, zoomLevel)).ToArray(),
+                        null,
+                        freehand.StrokeWidth))
+                    .ToArray();
+            case ShapeAnnotation shape:
+                return
+                [
+                    new AnnotationVisual(
+                        ConvertBoundsToPixelRect(shape.Bounds, page, zoomLevel),
+                        shape.Type switch
+                        {
+                            ShapeType.Ellipse => AnnotationVisualKind.Ellipse,
+                            ShapeType.Arrow => AnnotationVisualKind.Arrow,
+                            ShapeType.Line => AnnotationVisualKind.Line,
+                            _ => AnnotationVisualKind.Rectangle
+                        },
+                        ParseColorHex(shape.StrokeColorHex, Color.FromRgb(255, 0, 0)),
+                        null,
+                        string.IsNullOrWhiteSpace(shape.FillColorHex)
+                            ? null
+                            : ParseColorHex(shape.FillColorHex, Color.FromArgb(96, 255, 0, 0)),
+                        shape.StrokeWidth)
+                ];
+            case CommentAnnotation comment when IsStampComment(comment):
+                return
+                [
+                    new AnnotationVisual(
+                        ConvertBoundsToPixelRect(comment.Bounds, page, zoomLevel),
+                        AnnotationVisualKind.Stamp,
+                        Color.FromRgb(224, 88, 32),
+                        null,
+                        null,
+                        2d,
+                        comment.Text)
+                ];
+            default:
+                return [];
+        }
     }
 
     private static Avalonia.Rect ConvertBoundsToPixelRect(PdfTextBounds bounds, PdfPage page, double zoomLevel)
@@ -648,6 +713,7 @@ public partial class MainWindow : Window
         var comments = tab.Document.Annotations
             .Where(annotation => annotation.PageNumber == page.PageNumber)
             .OfType<CommentAnnotation>()
+            .Where(comment => !IsStampComment(comment))
             .ToArray();
         foreach (var comment in comments)
         {
@@ -738,6 +804,111 @@ public partial class MainWindow : Window
         }
     }
 
+    private void RebuildAnnotationPanel()
+    {
+        if (_activeTab is null)
+        {
+            AnnotationPanelListBox.ItemsSource = Array.Empty<AnnotationPanelItem>();
+            AnnotationCountBadgeTextBlock.Text = "0";
+            DeleteAnnotationButton.IsEnabled = false;
+            return;
+        }
+
+        var items = _activeTab.Document.Annotations
+            .OrderBy(annotation => annotation.PageNumber)
+            .Select(annotation => new AnnotationPanelItem(
+                annotation.Id,
+                annotation.PageNumber,
+                GetAnnotationBadge(annotation),
+                GetAnnotationSummary(annotation)))
+            .ToArray();
+        AnnotationPanelListBox.ItemsSource = items;
+        AnnotationCountBadgeTextBlock.Text = items.Length.ToString(CultureInfo.InvariantCulture);
+        DeleteAnnotationButton.IsEnabled = AnnotationPanelListBox.SelectedItem is AnnotationPanelItem;
+    }
+
+    private void UpdateFileInfoPanel()
+    {
+        if (_activeTab is null)
+        {
+            FileInfoTextBlock.Text = "ファイル未選択";
+            return;
+        }
+
+        var path = _activeTab.Document.FilePath;
+        var fileInfo = new FileInfo(path);
+        var size = fileInfo.Exists ? $"{Math.Max(1d, fileInfo.Length / 1024d / 1024d):0.0} MB" : "不明";
+        FileInfoTextBlock.Text = $"ページ: {_activeTab.PageCount} / サイズ: {size}";
+    }
+
+    private static string GetAnnotationBadge(Annotation annotation)
+    {
+        return annotation switch
+        {
+            HighlightAnnotation highlight => highlight.Type switch
+            {
+                HighlightType.Underline => "🔴",
+                HighlightType.Strikethrough => "🔴",
+                _ => "🟡"
+            },
+            CommentAnnotation comment when IsStampComment(comment) => "🟢",
+            CommentAnnotation => "🔵",
+            FreehandAnnotation => "🟢",
+            ShapeAnnotation => "🟢",
+            _ => "⚪"
+        };
+    }
+
+    private static string GetAnnotationSummary(Annotation annotation)
+    {
+        return annotation switch
+        {
+            HighlightAnnotation highlight => highlight.Type switch
+            {
+                HighlightType.Underline => "下線",
+                HighlightType.Strikethrough => "取り消し線",
+                _ => "ハイライト"
+            },
+            CommentAnnotation comment when IsStampComment(comment) => $"スタンプ: {comment.Text}",
+            CommentAnnotation comment => string.IsNullOrWhiteSpace(comment.Text) ? "コメント" : $"コメント: {comment.Text}",
+            FreehandAnnotation => "フリーハンド",
+            ShapeAnnotation shape => shape.Type switch
+            {
+                ShapeType.Ellipse => "楕円",
+                ShapeType.Arrow => "矢印",
+                ShapeType.Line => "線",
+                _ => "矩形"
+            },
+            _ => "注釈"
+        };
+    }
+
+    private static bool IsStampComment(CommentAnnotation comment)
+        => comment.Text.StartsWith("[STAMP]", StringComparison.Ordinal);
+
+    private static Color ParseColorHex(string? colorHex, Color fallback)
+    {
+        if (string.IsNullOrWhiteSpace(colorHex))
+        {
+            return fallback;
+        }
+
+        try
+        {
+            return Color.Parse(colorHex);
+        }
+        catch (FormatException)
+        {
+            return fallback;
+        }
+    }
+
+    private static Point ConvertPdfPointToPixelPoint(AnnotationPoint point, PdfPage page, double zoomLevel)
+    {
+        var scale = (ScreenDpi * Math.Max(0.01d, zoomLevel)) / PdfDpi;
+        return new Point(point.X * scale, (page.HeightPt - point.Y) * scale);
+    }
+
     private void UpdateToolbarState()
     {
         var tab = _activeTab;
@@ -762,6 +933,13 @@ public partial class MainWindow : Window
         {
             ZoomComboBox.SelectedItem = null;
         }
+
+        HighlightToolButton.IsChecked = _activeAnnotationTool == AnnotationTool.Highlight;
+        CommentToolButton.IsChecked = _activeAnnotationTool == AnnotationTool.Comment;
+        FreehandToolButton.IsChecked = _activeAnnotationTool == AnnotationTool.Freehand;
+        ShapeToolButton.IsChecked = _activeAnnotationTool == AnnotationTool.Shape;
+        StampToolButton.IsChecked = _activeAnnotationTool == AnnotationTool.Stamp;
+        DeleteAnnotationButton.IsEnabled = AnnotationPanelListBox.SelectedItem is AnnotationPanelItem;
     }
 
     private void UpdateStatusBar()
@@ -959,6 +1137,7 @@ public partial class MainWindow : Window
             });
         }
 
+        RebuildAnnotationPanel();
         _ = RenderActiveTabAsync();
     }
 
@@ -991,7 +1170,63 @@ public partial class MainWindow : Window
             IsOpen = true
         };
         tab.Document.AddAnnotation(comment);
+        RebuildAnnotationPanel();
         _ = RenderActiveTabAsync();
+    }
+
+    private void AddFreehandAnnotation(TabViewModel tab, PdfPage page, IReadOnlyList<AnnotationPoint> points)
+    {
+        if (points.Count < 2)
+        {
+            return;
+        }
+
+        var left = points.Min(point => point.X);
+        var right = points.Max(point => point.X);
+        var top = points.Max(point => point.Y);
+        var bottom = points.Min(point => point.Y);
+        var stroke = points.ToArray();
+        tab.Document.AddAnnotation(new FreehandAnnotation
+        {
+            PageNumber = page.PageNumber,
+            Bounds = new PdfTextBounds(left, top, right, bottom),
+            StrokeColorHex = _activeStrokeColorHex,
+            StrokeWidth = _activeStrokeWidth,
+            Strokes =
+            [
+                stroke
+            ]
+        });
+    }
+
+    private void AddShapeAnnotation(TabViewModel tab, PdfPage page, Point startPdf, Point endPdf)
+    {
+        var bounds = CreateBoundsFromDrag(startPdf, endPdf);
+        tab.Document.AddAnnotation(new ShapeAnnotation
+        {
+            PageNumber = page.PageNumber,
+            Bounds = bounds,
+            Type = _activeShapeType,
+            StrokeColorHex = _activeStrokeColorHex,
+            FillColorHex = _activeFillColorHex,
+            StrokeWidth = _activeStrokeWidth
+        });
+    }
+
+    private void AddPresetStamp(TabViewModel tab, PdfPage page, string stampText)
+    {
+        var left = Math.Clamp(tab.MouseX, 0, page.WidthPt);
+        var top = Math.Clamp(tab.MouseY + 20d, 0, page.HeightPt);
+        var right = Math.Clamp(left + 90d, 0, page.WidthPt);
+        var bottom = Math.Clamp(top - 28d, 0, page.HeightPt);
+        tab.Document.AddAnnotation(new CommentAnnotation
+        {
+            PageNumber = page.PageNumber,
+            Bounds = new PdfTextBounds(left, top, right, bottom),
+            Text = $"[STAMP]{stampText}",
+            Author = Environment.UserName,
+            IsOpen = false
+        });
     }
 
     private void SetEmptyStateVisible(bool visible)
@@ -1011,6 +1246,7 @@ public partial class MainWindow : Window
         SecondarySplitPageControl.SetBitmap(null);
         ContinuousPagePanel.Children.Clear();
         _continuousPageMap.Clear();
+        FloatingAnnotationToolbar.IsVisible = false;
     }
 
     private async Task OpenFileFromPickerAsync()
@@ -1092,6 +1328,7 @@ public partial class MainWindow : Window
             RebuildTabBar();
             RebuildSplitTabSelectors();
             RebuildThumbnailPanel();
+            RebuildAnnotationPanel();
             CancelRender();
             ClearPageViews();
             SetEmptyStateVisible(true);
@@ -1279,6 +1516,11 @@ public partial class MainWindow : Window
             var currentPdfPoint = new Point(tab.MouseX, tab.MouseY);
             _ = UpdateTextSelectionAsync(tab, page, currentPdfPoint);
         }
+        else if (_activeAnnotationTool == AnnotationTool.Freehand && _currentFreehandStroke.Count > 0)
+        {
+            _currentFreehandStroke.Add(new AnnotationPoint(tab.MouseX, tab.MouseY));
+            _ = RenderActiveTabAsync();
+        }
     }
 
     private void OnContinuousPagePointerMoved(object? sender, PointerEventArgs e)
@@ -1312,6 +1554,11 @@ public partial class MainWindow : Window
 
         if (e.GetCurrentPoint(control).Properties.IsLeftButtonPressed)
         {
+            if (_activeAnnotationTool != AnnotationTool.TextSelect)
+            {
+                return;
+            }
+
             var point = e.GetPosition(control);
             UpdateMouseCoordinates(info.Tab, info.Page, point, info.Tab.ZoomLevel);
             _isSelectingText = true;
@@ -1319,6 +1566,7 @@ public partial class MainWindow : Window
             _selectionPage = info.Page;
             _selectionStartPdfPoint = new Point(info.Tab.MouseX, info.Tab.MouseY);
             _selectedText = string.Empty;
+            FloatingAnnotationToolbar.IsVisible = false;
             _selectionHighlightMap.Remove((info.Tab, info.Page.PageNumber));
             _selectionPdfBoundsMap.Remove((info.Tab, info.Page.PageNumber));
         }
@@ -1345,23 +1593,80 @@ public partial class MainWindow : Window
         var page = tab.Document.Pages[tab.CurrentPage - 1];
         var point = e.GetPosition(PageControl);
         UpdateMouseCoordinates(tab, page, point, tab.ZoomLevel);
+        if (_activeAnnotationTool == AnnotationTool.Comment)
+        {
+            _selectionPage = page;
+            _selectedText = string.Empty;
+            AddCommentFromSelection();
+            RebuildAnnotationPanel();
+            return;
+        }
+
+        if (_activeAnnotationTool == AnnotationTool.Stamp)
+        {
+            AddPresetStamp(tab, page, "承認済み");
+            RebuildAnnotationPanel();
+            _ = RenderActiveTabAsync();
+            return;
+        }
+
+        if (_activeAnnotationTool == AnnotationTool.Freehand)
+        {
+            _selectionPage = page;
+            _currentFreehandStroke.Clear();
+            _currentFreehandStroke.Add(new AnnotationPoint(tab.MouseX, tab.MouseY));
+            return;
+        }
+
+        if (_activeAnnotationTool == AnnotationTool.Shape)
+        {
+            _selectionPage = page;
+            _shapeStartPdfPoint = new Point(tab.MouseX, tab.MouseY);
+            return;
+        }
+
         _isSelectingText = true;
         _selectionTab = tab;
         _selectionPage = page;
         _selectionStartPdfPoint = new Point(tab.MouseX, tab.MouseY);
         _selectedText = string.Empty;
+        FloatingAnnotationToolbar.IsVisible = false;
         _selectionHighlightMap.Remove((tab, page.PageNumber));
         _selectionPdfBoundsMap.Remove((tab, page.PageNumber));
     }
 
     private void OnSinglePagePointerReleased(object? sender, PointerReleasedEventArgs e)
     {
+        var tab = _activeTab;
+        if (tab is not null && _selectionPage is not null)
+        {
+            if (_activeAnnotationTool == AnnotationTool.Freehand && _currentFreehandStroke.Count > 1)
+            {
+                AddFreehandAnnotation(tab, _selectionPage, _currentFreehandStroke);
+                _currentFreehandStroke.Clear();
+                RebuildAnnotationPanel();
+                _ = RenderActiveTabAsync();
+                return;
+            }
+
+            if (_activeAnnotationTool == AnnotationTool.Shape && _shapeStartPdfPoint is Point startPoint)
+            {
+                var endPoint = new Point(tab.MouseX, tab.MouseY);
+                AddShapeAnnotation(tab, _selectionPage, startPoint, endPoint);
+                _shapeStartPdfPoint = null;
+                RebuildAnnotationPanel();
+                _ = RenderActiveTabAsync();
+                return;
+            }
+        }
+
         if (!_isSelectingText)
         {
             return;
         }
 
         _isSelectingText = false;
+        FloatingAnnotationToolbar.IsVisible = !string.IsNullOrWhiteSpace(_selectedText);
     }
 
     private async void OnOpenFileClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -1416,6 +1721,196 @@ public partial class MainWindow : Window
 
         _activeTab.IsSearchVisible = false;
         UpdateSearchOverlayState();
+    }
+
+    private void OnHighlightToolClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        SetAnnotationTool(HighlightToolButton.IsChecked == true ? AnnotationTool.Highlight : AnnotationTool.TextSelect);
+    }
+
+    private void OnCommentToolClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        SetAnnotationTool(CommentToolButton.IsChecked == true ? AnnotationTool.Comment : AnnotationTool.TextSelect);
+    }
+
+    private void OnFreehandToolClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        SetAnnotationTool(FreehandToolButton.IsChecked == true ? AnnotationTool.Freehand : AnnotationTool.TextSelect);
+    }
+
+    private void OnShapeToolClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        SetAnnotationTool(ShapeToolButton.IsChecked == true ? AnnotationTool.Shape : AnnotationTool.TextSelect);
+    }
+
+    private void OnStampToolClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        SetAnnotationTool(StampToolButton.IsChecked == true ? AnnotationTool.Stamp : AnnotationTool.TextSelect);
+    }
+
+    private void SetAnnotationTool(AnnotationTool tool)
+    {
+        _activeAnnotationTool = tool;
+        UpdateToolbarState();
+    }
+
+    private void OnShapeTypeChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        _activeShapeType = ShapeTypeComboBox.SelectedIndex switch
+        {
+            1 => ShapeType.Ellipse,
+            2 => ShapeType.Arrow,
+            3 => ShapeType.Line,
+            _ => ShapeType.Rectangle
+        };
+    }
+
+    private void OnStrokeStyleChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        _activeStrokeColorHex = StrokeColorComboBox.SelectedIndex switch
+        {
+            1 => "#00c878",
+            2 => "#50a0ff",
+            3 => "#ffd000",
+            4 => "#111111",
+            _ => "#ff0000"
+        };
+        _activeFillColorHex = FillColorComboBox.SelectedIndex switch
+        {
+            1 => "#60ff0000",
+            2 => "#6000c878",
+            3 => "#6050a0ff",
+            4 => "#60ffd000",
+            _ => null
+        };
+        _activeStrokeWidth = StrokeWidthComboBox.SelectedIndex switch
+        {
+            0 => 1d,
+            2 => 3d,
+            3 => 4d,
+            4 => 6d,
+            _ => 2d
+        };
+    }
+
+    private void OnFloatingHighlightClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        => AddHighlightFromSelection(HighlightType.Highlight, HighlightColor.Yellow);
+
+    private void OnFloatingUnderlineClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        => AddHighlightFromSelection(HighlightType.Underline, HighlightColor.Yellow);
+
+    private void OnFloatingStrikeClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        => AddHighlightFromSelection(HighlightType.Strikethrough, HighlightColor.Pink);
+
+    private void OnFloatingCommentClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        => AddCommentFromSelection();
+
+    private void OnFloatingFreehandClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        => SetAnnotationTool(AnnotationTool.Freehand);
+
+    private void OnFloatingRectangleClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        _activeShapeType = ShapeType.Rectangle;
+        ShapeTypeComboBox.SelectedIndex = 0;
+        SetAnnotationTool(AnnotationTool.Shape);
+    }
+
+    private void OnFloatingEllipseClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        _activeShapeType = ShapeType.Ellipse;
+        ShapeTypeComboBox.SelectedIndex = 1;
+        SetAnnotationTool(AnnotationTool.Shape);
+    }
+
+    private void OnFloatingArrowClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        _activeShapeType = ShapeType.Arrow;
+        ShapeTypeComboBox.SelectedIndex = 2;
+        SetAnnotationTool(AnnotationTool.Shape);
+    }
+
+    private void OnFloatingStampClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        => SetAnnotationTool(AnnotationTool.Stamp);
+
+    private void OnAnnotationPanelSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_activeTab is null || AnnotationPanelListBox.SelectedItem is not AnnotationPanelItem item)
+        {
+            UpdateToolbarState();
+            return;
+        }
+
+        _activeTab.JumpToPage(item.PageNumber);
+        RebuildThumbnailPanel();
+        UpdateToolbarState();
+        _ = RenderActiveTabAsync();
+    }
+
+    private void OnDeleteAnnotationClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (_activeTab is null || AnnotationPanelListBox.SelectedItem is not AnnotationPanelItem item)
+        {
+            return;
+        }
+
+        _activeTab.Document.RemoveAnnotation(item.AnnotationId);
+        RebuildAnnotationPanel();
+        _ = RenderActiveTabAsync();
+    }
+
+    private async void OnExportFdfClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (_activeTab is null)
+        {
+            return;
+        }
+
+        var target = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            SuggestedFileName = $"{Path.GetFileNameWithoutExtension(_activeTab.Document.FileName)}.fdf",
+            FileTypeChoices =
+            [
+                new FilePickerFileType("FDF")
+                {
+                    Patterns = ["*.fdf"]
+                }
+            ]
+        }).ConfigureAwait(true);
+        if (target is null)
+        {
+            return;
+        }
+
+        await _annotationService.ExportAsFdfAsync(_activeTab.Document, target.Path.LocalPath).ConfigureAwait(true);
+    }
+
+    private async void OnImportFdfClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (_activeTab is null)
+        {
+            return;
+        }
+
+        var picked = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("FDF")
+                {
+                    Patterns = ["*.fdf"]
+                }
+            ]
+        }).ConfigureAwait(true);
+        var path = picked.FirstOrDefault()?.Path.LocalPath;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        await _annotationService.ImportFdfAsync(_activeTab.Document, path).ConfigureAwait(true);
+        RebuildAnnotationPanel();
+        _ = RenderActiveTabAsync();
     }
 
     private void OnFirstPageClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -1854,6 +2349,15 @@ public partial class MainWindow : Window
         ZoomComboBox.SelectedIndex = 3;
     }
 
+    private void InitializeAnnotationTooling()
+    {
+        ShapeTypeComboBox.SelectedIndex = 0;
+        StrokeColorComboBox.SelectedIndex = 0;
+        FillColorComboBox.SelectedIndex = 0;
+        StrokeWidthComboBox.SelectedIndex = 1;
+        UpdateToolbarState();
+    }
+
     private void RebuildRecentFilesMenu()
     {
         var items = new List<object>();
@@ -2106,5 +2610,22 @@ public partial class MainWindow : Window
         Save,
         Discard,
         Cancel
+    }
+
+    private enum AnnotationTool
+    {
+        TextSelect,
+        Highlight,
+        Comment,
+        Freehand,
+        Shape,
+        Stamp
+    }
+
+    private sealed record AnnotationPanelItem(Guid AnnotationId, int PageNumber, string Badge, string Summary)
+    {
+        public string Display => $"{Badge} P{PageNumber}: {Summary}";
+
+        public override string ToString() => Display;
     }
 }

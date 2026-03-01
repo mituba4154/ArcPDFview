@@ -51,6 +51,66 @@
                   Content="最近"
                   Padding="10,2"
                   Click="OnRecentFilesClicked" />
+          <Separator Margin="4,0" />
+          <ToggleButton x:Name="HighlightToolButton"
+                        Content="🖊"
+                        ToolTip.Tip="ハイライトツール"
+                        Click="OnHighlightToolClicked" />
+          <ToggleButton x:Name="CommentToolButton"
+                        Content="💬"
+                        ToolTip.Tip="コメントツール"
+                        Click="OnCommentToolClicked" />
+          <ToggleButton x:Name="FreehandToolButton"
+                        Content="✍"
+                        ToolTip.Tip="フリーハンドツール"
+                        Click="OnFreehandToolClicked" />
+          <ToggleButton x:Name="ShapeToolButton"
+                        Content="□"
+                        ToolTip.Tip="図形ツール"
+                        Click="OnShapeToolClicked" />
+          <ToggleButton x:Name="StampToolButton"
+                        Content="🏷"
+                        ToolTip.Tip="スタンプツール"
+                        Click="OnStampToolClicked" />
+          <ComboBox x:Name="ShapeTypeComboBox"
+                    Width="88"
+                    SelectedIndex="0"
+                    SelectionChanged="OnShapeTypeChanged">
+            <ComboBoxItem Content="矩形" />
+            <ComboBoxItem Content="楕円" />
+            <ComboBoxItem Content="矢印" />
+            <ComboBoxItem Content="線" />
+          </ComboBox>
+          <ComboBox x:Name="StrokeColorComboBox"
+                    Width="78"
+                    SelectedIndex="0"
+                    SelectionChanged="OnStrokeStyleChanged">
+            <ComboBoxItem Content="赤" />
+            <ComboBoxItem Content="緑" />
+            <ComboBoxItem Content="青" />
+            <ComboBoxItem Content="黄" />
+            <ComboBoxItem Content="黒" />
+          </ComboBox>
+          <ComboBox x:Name="FillColorComboBox"
+                    Width="78"
+                    SelectedIndex="0"
+                    SelectionChanged="OnStrokeStyleChanged">
+            <ComboBoxItem Content="なし" />
+            <ComboBoxItem Content="赤" />
+            <ComboBoxItem Content="緑" />
+            <ComboBoxItem Content="青" />
+            <ComboBoxItem Content="黄" />
+          </ComboBox>
+          <ComboBox x:Name="StrokeWidthComboBox"
+                    Width="72"
+                    SelectedIndex="1"
+                    SelectionChanged="OnStrokeStyleChanged">
+            <ComboBoxItem Content="1px" />
+            <ComboBoxItem Content="2px" />
+            <ComboBoxItem Content="3px" />
+            <ComboBoxItem Content="4px" />
+            <ComboBoxItem Content="6px" />
+          </ComboBox>
         </StackPanel>
 
         <StackPanel Grid.Column="1"
@@ -131,13 +191,13 @@
     </Border>
 
     <Grid Grid.Row="2"
-          ColumnDefinitions="220,*"
+          ColumnDefinitions="220,*,240"
           Background="{DynamicResource BgDarkBrush}">
       <Border Grid.Column="0"
               Background="{DynamicResource BgPanelBrush}"
               BorderBrush="{DynamicResource BorderBrush}"
               BorderThickness="0,0,1,0">
-        <TabControl x:Name="LeftSidebarTabControl">
+          <TabControl x:Name="LeftSidebarTabControl">
           <TabItem Header="サムネイル">
             <ScrollViewer x:Name="ThumbnailScrollViewer"
                           HorizontalScrollBarVisibility="Disabled"
@@ -156,7 +216,7 @@
                           Spacing="2" />
             </ScrollViewer>
           </TabItem>
-        </TabControl>
+          </TabControl>
       </Border>
 
       <Grid Grid.Column="1">
@@ -288,7 +348,87 @@
             </StackPanel>
           </StackPanel>
         </Border>
+        <Border x:Name="FloatingAnnotationToolbar"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Margin="0,0,0,16"
+                Background="{DynamicResource BgPanel2Brush}"
+                BorderBrush="{DynamicResource BorderLightBrush}"
+                BorderThickness="1"
+                CornerRadius="16"
+                Padding="8,6"
+                IsVisible="False">
+          <StackPanel Orientation="Horizontal"
+                      Spacing="6">
+            <Button Content="ハイライト"
+                    Click="OnFloatingHighlightClicked" />
+            <Button Content="下線"
+                    Click="OnFloatingUnderlineClicked" />
+            <Button Content="取り消し線"
+                    Click="OnFloatingStrikeClicked" />
+            <Button Content="コメント"
+                    Click="OnFloatingCommentClicked" />
+            <Button Content="手書き"
+                    Click="OnFloatingFreehandClicked" />
+            <Button Content="矩形"
+                    Click="OnFloatingRectangleClicked" />
+            <Button Content="楕円"
+                    Click="OnFloatingEllipseClicked" />
+            <Button Content="矢印"
+                    Click="OnFloatingArrowClicked" />
+            <Button Content="スタンプ"
+                    Click="OnFloatingStampClicked" />
+          </StackPanel>
+        </Border>
       </Grid>
+
+      <Border Grid.Column="2"
+              Background="{DynamicResource BgPanelBrush}"
+              BorderBrush="{DynamicResource BorderBrush}"
+              BorderThickness="1,0,0,0">
+        <Grid RowDefinitions="Auto,*,Auto,Auto"
+              Margin="8">
+          <StackPanel Orientation="Horizontal"
+                      Spacing="8">
+            <TextBlock Text="注釈パネル"
+                       Foreground="{DynamicResource TextPrimaryBrush}"
+                       VerticalAlignment="Center" />
+            <Border Background="{DynamicResource AccentBrush}"
+                    CornerRadius="10"
+                    Padding="6,2">
+              <TextBlock x:Name="AnnotationCountBadgeTextBlock"
+                         Foreground="White"
+                         FontSize="11"
+                         Text="0" />
+            </Border>
+          </StackPanel>
+          <ListBox x:Name="AnnotationPanelListBox"
+                   Grid.Row="1"
+                   Margin="0,8,0,8"
+                   SelectionChanged="OnAnnotationPanelSelectionChanged" />
+          <StackPanel Grid.Row="2"
+                      Orientation="Horizontal"
+                      Spacing="6">
+            <Button x:Name="DeleteAnnotationButton"
+                    Content="削除"
+                    Click="OnDeleteAnnotationClicked" />
+            <Button x:Name="ExportFdfButton"
+                    Content="FDF エクスポート"
+                    Click="OnExportFdfClicked" />
+            <Button x:Name="ImportFdfButton"
+                    Content="FDF インポート"
+                    Click="OnImportFdfClicked" />
+          </StackPanel>
+          <StackPanel Grid.Row="3"
+                      Margin="0,10,0,0"
+                      Spacing="2">
+            <TextBlock Text="ファイル情報"
+                       Foreground="{DynamicResource TextSecondaryBrush}" />
+            <TextBlock x:Name="FileInfoTextBlock"
+                       Foreground="{DynamicResource TextDimBrush}" />
+          </StackPanel>
+        </Grid>
+      </Border>
     </Grid>
 
     <Border Grid.Row="3"

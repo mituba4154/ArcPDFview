@@ -37,4 +37,37 @@ public class PdfiumRenderServiceTests
         Assert.Equal(100, pdf.X, precision: 6);
         Assert.Equal(200, pdf.Y, precision: 6);
     }
+
+    [Fact]
+    public async Task AnnotationService_ExportAndImportFdf_RoundTripsSupportedAnnotations()
+    {
+        var service = new AnnotationService();
+        using var source = new PdfDocument("sample.pdf", IntPtr.Zero, [], _ => { });
+        source.AddAnnotation(new HighlightAnnotation
+        {
+            PageNumber = 1,
+            Bounds = new PdfTextBounds(10, 20, 30, 5),
+            Type = HighlightType.Highlight,
+            Color = HighlightColor.Blue
+        });
+        source.AddAnnotation(new FreehandAnnotation
+        {
+            PageNumber = 2,
+            Bounds = new PdfTextBounds(5, 30, 40, 1),
+            StrokeColorHex = "#00c878",
+            StrokeWidth = 3d,
+            Strokes = [[new AnnotationPoint(5, 5), new AnnotationPoint(10, 8)]]
+        });
+        source.ClearModified();
+
+        var path = Path.Combine(Path.GetTempPath(), $"acropdf-{Guid.NewGuid():N}.fdf");
+        await service.ExportAsFdfAsync(source, path);
+
+        using var imported = new PdfDocument("target.pdf", IntPtr.Zero, [], _ => { });
+        await service.ImportFdfAsync(imported, path);
+
+        Assert.Equal(2, imported.Annotations.Count);
+        Assert.True(imported.Annotations.OfType<HighlightAnnotation>().Any());
+        Assert.True(imported.Annotations.OfType<FreehandAnnotation>().Any());
+    }
 }

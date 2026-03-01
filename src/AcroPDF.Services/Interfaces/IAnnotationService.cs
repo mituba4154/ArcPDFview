@@ -27,6 +27,24 @@ public interface IAnnotationService
     Task SaveAnnotationsAsync(PdfDocument document, string? outputPath = null, CancellationToken ct = default);
 
     /// <summary>
+    /// 注釈を FDF 形式ファイルへエクスポートします。
+    /// </summary>
+    /// <param name="document">対象ドキュメント。</param>
+    /// <param name="outputPath">出力先 FDF パス。</param>
+    /// <param name="ct">キャンセルトークン。</param>
+    /// <returns>完了タスク。</returns>
+    Task ExportAsFdfAsync(PdfDocument document, string outputPath, CancellationToken ct = default);
+
+    /// <summary>
+    /// FDF 形式ファイルから注釈をインポートします。
+    /// </summary>
+    /// <param name="document">対象ドキュメント。</param>
+    /// <param name="fdfPath">入力 FDF パス。</param>
+    /// <param name="ct">キャンセルトークン。</param>
+    /// <returns>完了タスク。</returns>
+    Task ImportFdfAsync(PdfDocument document, string fdfPath, CancellationToken ct = default);
+
+    /// <summary>
     /// 画面座標を PDF 座標へ変換します。
     /// </summary>
     /// <param name="screenX">画面 X 座標（px）。</param>
@@ -46,4 +64,3 @@ public interface IAnnotationService
     /// <returns>変換後の画面座標。</returns>
     AnnotationPoint ConvertPdfToScreen(double pdfX, double pdfY, double dpiScale, double pageHeightPt);
 }
-
