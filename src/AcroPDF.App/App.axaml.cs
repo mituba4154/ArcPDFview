@@ -93,7 +93,7 @@ public partial class App : Application
 
     private void ApplyThemePreference()
     {
-        var isHighContrast = PlatformSettings?.GetColorValues().ContrastPreference == ColorContrastPreference.High;
+        var isHighContrast = PlatformSettings?.GetColorValues()?.ContrastPreference == ColorContrastPreference.High;
         RequestedThemeVariant = _themePreference switch
         {
             ThemePreference.Light => ThemeVariant.Light,
