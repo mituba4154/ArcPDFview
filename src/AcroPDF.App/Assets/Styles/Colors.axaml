@@ -1,0 +1,31 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Color x:Key="BgDark">#1a1a1a</Color>
+  <Color x:Key="BgPanel">#252525</Color>
+  <Color x:Key="BgPanel2">#2e2e2e</Color>
+  <Color x:Key="BgToolbar">#323232</Color>
+  <Color x:Key="BgTabActive">#1a1a1a</Color>
+  <Color x:Key="BgTabInactive">#2a2a2a</Color>
+  <Color x:Key="Accent">#e8521a</Color>
+  <Color x:Key="Accent2">#f07030</Color>
+  <Color x:Key="TextPrimary">#e8e8e8</Color>
+  <Color x:Key="TextSecondary">#999999</Color>
+  <Color x:Key="TextDim">#666666</Color>
+  <Color x:Key="Border">#3a3a3a</Color>
+  <Color x:Key="BorderLight">#444444</Color>
+  <Color x:Key="PageBg">#ffffff</Color>
+  <Color x:Key="Highlight">#59ffb400</Color>
+  <Color x:Key="Selection">#5964a0ff</Color>
+
+  <SolidColorBrush x:Key="BgDarkBrush" Color="{DynamicResource BgDark}" />
+  <SolidColorBrush x:Key="BgPanelBrush" Color="{DynamicResource BgPanel}" />
+  <SolidColorBrush x:Key="BgPanel2Brush" Color="{DynamicResource BgPanel2}" />
+  <SolidColorBrush x:Key="BgToolbarBrush" Color="{DynamicResource BgToolbar}" />
+  <SolidColorBrush x:Key="AccentBrush" Color="{DynamicResource Accent}" />
+  <SolidColorBrush x:Key="Accent2Brush" Color="{DynamicResource Accent2}" />
+  <SolidColorBrush x:Key="TextPrimaryBrush" Color="{DynamicResource TextPrimary}" />
+  <SolidColorBrush x:Key="TextSecondaryBrush" Color="{DynamicResource TextSecondary}" />
+  <SolidColorBrush x:Key="TextDimBrush" Color="{DynamicResource TextDim}" />
+  <SolidColorBrush x:Key="BorderBrush" Color="{DynamicResource Border}" />
+  <SolidColorBrush x:Key="BorderLightBrush" Color="{DynamicResource BorderLight}" />
+</ResourceDictionary>
