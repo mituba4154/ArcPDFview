@@ -1,6 +1,7 @@
 #nullable enable
 
 using System.Globalization;
+using System.Diagnostics;
 using System.Resources;
 
 namespace AcroPDF.App.Assets.Localization;
@@ -24,6 +25,13 @@ public static class AppStrings
     /// <returns>ローカライズ文字列。</returns>
     public static string Get(string key)
     {
-        return ResourceManager.GetString(key, CurrentCulture) ?? key;
+        var value = ResourceManager.GetString(key, CurrentCulture);
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            return value;
+        }
+
+        Trace.TraceWarning($"Missing localization resource: '{key}' ({CurrentCulture.Name})");
+        return $"[Missing: {key}]";
     }
 }

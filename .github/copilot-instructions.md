@@ -437,7 +437,7 @@ AnnotationOverlay の実装:
 | 5-12 | 日本語リソース完備 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Assets/Localization/Strings.ja.resx` |
 | 5-13 | 英語リソース完備 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Assets/Localization/Strings.en.resx` |
 | 5-14 | キーボードフォーカス完全対応 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml` |
-| 5-15 | スクリーンリーダー対応 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`（AutomationProperties 追加） |
+| 5-15 | スクリーンリーダー対応 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml` |
 | 5-16 | ハイコントラストモード | ✅ | 2026-03-01 完了。`src/AcroPDF.App/App.axaml.cs`、`src/AcroPDF.App/Assets/Styles/Colors.axaml` |
 | 5-17 | カバレッジ確認（Core 80%+ 目標） | ⬜ | |
 | 5-18 | 統合テスト | ⬜ | |

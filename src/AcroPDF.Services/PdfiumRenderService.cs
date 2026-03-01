@@ -1,6 +1,7 @@
 #nullable enable
 
 using System.Collections.Concurrent;
+using System.Buffers;
 using System.Diagnostics;
 using System.Threading;
 using System.Runtime.InteropServices;
@@ -38,6 +39,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
     private static readonly AsyncLocal<FileStream?> SaveStreamContext = new();
     private static bool _libraryInitialized;
 
+    // Phase 5 要件: ページキャッシュは最大 10 エントリの LRU とする。
     private const int MaxPageCacheEntries = 10;
     private readonly object _cacheLock = new();
     private readonly Dictionary<string, LinkedListNode<CacheEntry>> _pageCache = new(StringComparer.Ordinal);
@@ -1554,12 +1556,17 @@ public sealed class PdfiumRenderService : IPdfRenderService
 
         public DocumentLoadContext(string filePath)
         {
-            _stream = new FileStream(filePath, FileMode.Open, System.IO.FileAccess.Read, FileShare.ReadWrite);
+            _stream = new FileStream(filePath, FileMode.Open, System.IO.FileAccess.Read, FileShare.Read);
+            if (_stream.Length > uint.MaxValue)
+            {
+                throw new InvalidOperationException("PDF larger than 4GB is not supported by the current PDFium custom stream bridge.");
+            }
+
             GetBlock = ReadBlock;
             _selfHandle = GCHandle.Alloc(this, GCHandleType.Normal);
             AccessInfo = new FPDF_FILEACCESS
             {
-                m_FileLen = checked((uint)Math.Min(_stream.Length, uint.MaxValue)),
+                m_FileLen = checked((uint)_stream.Length),
                 m_GetBlock = Marshal.GetFunctionPointerForDelegate(GetBlock),
                 m_Param = GCHandle.ToIntPtr(_selfHandle)
             };
@@ -1591,25 +1598,33 @@ public sealed class PdfiumRenderService : IPdfRenderService
                 return 0;
             }
 
-            var endPosition = (long)position + size;
+            var endPosition = checked((long)position + size);
             if (endPosition > _stream.Length)
             {
                 return 0;
             }
 
-            var bytes = new byte[size];
-            lock (_sync)
+            var sizeInt = checked((int)size);
+            var bytes = ArrayPool<byte>.Shared.Rent(sizeInt);
+            try
             {
-                _stream.Position = position;
-                var read = _stream.Read(bytes, 0, bytes.Length);
-                if (read != bytes.Length)
+                lock (_sync)
                 {
-                    return 0;
+                    _stream.Position = position;
+                    var read = _stream.Read(bytes, 0, sizeInt);
+                    if (read != sizeInt)
+                    {
+                        return 0;
+                    }
                 }
-            }
 
-            Marshal.Copy(bytes, 0, buffer, bytes.Length);
-            return 1;
+                Marshal.Copy(bytes, 0, buffer, sizeInt);
+                return 1;
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(bytes);
+            }
         }
     }
 }

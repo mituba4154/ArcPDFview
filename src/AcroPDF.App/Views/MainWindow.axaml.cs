@@ -38,6 +38,8 @@ public partial class MainWindow : Window
     private const string StampPrefix = "[STAMP]";
     private const string DefaultStampText = "承認済み";
     private const int ContinuousPreloadMarginPx = 300;
+    private static readonly TimeSpan SplashDisplayDuration = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan SplashFadeDuration = TimeSpan.FromMilliseconds(300);
     private static readonly TimeSpan ZoomDebounceDelay = TimeSpan.FromMilliseconds(150);
     private static readonly TimeSpan ContinuousScrollDebounceDelay = TimeSpan.FromMilliseconds(50);
     private readonly IPdfRenderService _pdfRenderService;
@@ -3240,9 +3242,19 @@ public partial class MainWindow : Window
 
     private async void OnOpened(object? sender, EventArgs e)
     {
-        await Task.Delay(1000).ConfigureAwait(true);
+        await Task.Delay(SplashDisplayDuration).ConfigureAwait(true);
+        if (!IsVisible)
+        {
+            return;
+        }
+
         SplashOverlay.Opacity = 0d;
-        await Task.Delay(300).ConfigureAwait(true);
+        await Task.Delay(SplashFadeDuration).ConfigureAwait(true);
+        if (!IsVisible)
+        {
+            return;
+        }
+
         SplashOverlay.IsVisible = false;
 
         if (_restoreAttempted)
