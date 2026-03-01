@@ -2,6 +2,7 @@
 
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
+using System.Text;
 using AcroPDF.Core.Models;
 using AcroPDF.Services.Interfaces;
 using SkiaSharp;
@@ -16,12 +17,24 @@ public sealed class PdfiumRenderService : IPdfRenderService
     private const uint PdfErrorPassword = 4;
     private const int RenderFlags = 0x01;
     private const int TwoPageSpacingPx = 16;
+    private const int AnnotSubtypeWidget = 20;
+    private const int FormFieldTypeUnknown = 0;
+    private const int FormFieldTypePushButton = 1;
+    private const int FormFieldTypeCheckBox = 2;
+    private const int FormFieldTypeRadioButton = 3;
+    private const int FormFieldTypeComboBox = 4;
+    private const int FormFieldTypeListBox = 5;
+    private const int FormFieldTypeTextField = 6;
+    private const int FormFieldTypeSignature = 7;
 
     private static readonly object InitLock = new();
     private static bool _libraryInitialized;
 
     private readonly ConcurrentDictionary<string, SKBitmap> _pageCache = new();
     private readonly ConcurrentDictionary<IntPtr, byte> _openDocuments = new();
+    private readonly ConcurrentDictionary<IntPtr, IntPtr> _formHandles = new();
+    // Unmanaged FPDF_FORMFILLINFO.Release で使用するため、GC 回収されないようインスタンスで保持する。
+    private readonly ReleaseCallback _releaseCallback;
     private int _disposed;
 
     /// <summary>
@@ -29,6 +42,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
     /// </summary>
     public PdfiumRenderService()
     {
+        _releaseCallback = static _ => { };
         EnsureLibraryInitialized();
     }
 
@@ -119,66 +133,16 @@ public sealed class PdfiumRenderService : IPdfRenderService
 
             var normalizedZoom = ClampZoomLevel(zoomLevel);
             var renderDpi = 96d * normalizedZoom;
-            var widthPx = Math.Max(1, (int)Math.Ceiling(page.WidthPt * renderDpi / 72d));
-            var heightPx = Math.Max(1, (int)Math.Ceiling(page.HeightPt * renderDpi / 72d));
-            var cacheKey = $"{page.DocumentHandle}:{page.PageIndex}:{renderDpi:F2}";
-
-            if (_pageCache.TryGetValue(cacheKey, out var cachedBitmap))
-            {
-                return cachedBitmap.Copy();
-            }
-
-            var pageHandle = NativeMethods.FPDF_LoadPage(page.DocumentHandle, page.PageIndex);
-            if (pageHandle == IntPtr.Zero)
-            {
-                throw new InvalidOperationException($"Failed to load page index {page.PageIndex}.");
-            }
-
-            IntPtr bitmapHandle = IntPtr.Zero;
-            try
-            {
-                bitmapHandle = NativeMethods.FPDFBitmap_Create(widthPx, heightPx, alpha: 1);
-                if (bitmapHandle == IntPtr.Zero)
-                {
-                    throw new InvalidOperationException("Failed to create PDFium bitmap.");
-                }
-
-                NativeMethods.FPDFBitmap_FillRect(bitmapHandle, 0, 0, widthPx, heightPx, 0xFFFFFFFFu);
-                NativeMethods.FPDF_RenderPageBitmap(bitmapHandle, pageHandle, 0, 0, widthPx, heightPx, 0, RenderFlags);
-
-                var sourcePtr = NativeMethods.FPDFBitmap_GetBuffer(bitmapHandle);
-                var sourceStride = NativeMethods.FPDFBitmap_GetStride(bitmapHandle);
-
-                var renderedBitmap = new SKBitmap(widthPx, heightPx, SKColorType.Bgra8888, SKAlphaType.Premul);
-                var destinationPtr = renderedBitmap.GetPixels();
-                var destinationStride = renderedBitmap.RowBytes;
-                var rowLength = Math.Min(sourceStride, destinationStride);
-
-                var rowBuffer = new byte[rowLength];
-                for (var y = 0; y < heightPx; y++)
-                {
-                    Marshal.Copy(IntPtr.Add(sourcePtr, y * sourceStride), rowBuffer, 0, rowLength);
-                    Marshal.Copy(rowBuffer, 0, IntPtr.Add(destinationPtr, y * destinationStride), rowLength);
-                }
-
-                if (_pageCache.TryAdd(cacheKey, renderedBitmap))
-                {
-                    return renderedBitmap.Copy();
-                }
-
-                renderedBitmap.Dispose();
-                return _pageCache[cacheKey].Copy();
-            }
-            finally
-            {
-                if (bitmapHandle != IntPtr.Zero)
-                {
-                    NativeMethods.FPDFBitmap_Destroy(bitmapHandle);
-                }
-
-                NativeMethods.FPDF_ClosePage(pageHandle);
-            }
+            return RenderPageInternal(page, renderDpi, useCache: true);
         }, ct);
+    }
+
+    /// <inheritdoc />
+    public Task<SKBitmap> RenderPageForPrintAsync(PdfPage page, int dpi, CancellationToken ct = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) == 1, this);
+        var printDpi = Math.Clamp(dpi, 72, 600);
+        return Task.Run(() => RenderPageInternal(page, printDpi, useCache: false), ct);
     }
 
     /// <inheritdoc />
@@ -231,6 +195,133 @@ public sealed class PdfiumRenderService : IPdfRenderService
     }
 
     /// <inheritdoc />
+    public Task<IReadOnlyList<PdfFormField>> GetFormFieldsAsync(PdfPage page, CancellationToken ct = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) == 1, this);
+        return Task.Run<IReadOnlyList<PdfFormField>>(() =>
+        {
+            ct.ThrowIfCancellationRequested();
+            var pageHandle = NativeMethods.FPDF_LoadPage(page.DocumentHandle, page.PageIndex);
+            if (pageHandle == IntPtr.Zero)
+            {
+                return [];
+            }
+
+            var formHandle = GetOrCreateFormHandle(page.DocumentHandle);
+            var fields = new List<PdfFormField>();
+            try
+            {
+                var count = NativeMethods.FPDFPage_GetAnnotCount(pageHandle);
+                for (var index = 0; index < count; index++)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var annot = NativeMethods.FPDFPage_GetAnnot(pageHandle, index);
+                    if (annot == IntPtr.Zero)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        if (NativeMethods.FPDFAnnot_GetSubtype(annot) != AnnotSubtypeWidget ||
+                            NativeMethods.FPDFAnnot_GetRect(annot, out var rect) == 0)
+                        {
+                            continue;
+                        }
+
+                        var formFieldType = formHandle != IntPtr.Zero
+                            ? NativeMethods.FPDFAnnot_GetFormFieldType(formHandle, annot)
+                            : FormFieldTypeUnknown;
+                        var type = MapFormFieldType(formFieldType);
+                        var appearanceState = GetAnnotationString(annot, "AS");
+                        fields.Add(new PdfFormField
+                        {
+                            Id = $"{page.PageNumber}:{index}",
+                            PageNumber = page.PageNumber,
+                            Name = GetAnnotationString(annot, "T"),
+                            FieldType = type,
+                            Bounds = new PdfTextBounds(rect.Left, rect.Top, rect.Right, rect.Bottom),
+                            Value = GetAnnotationString(annot, "V"),
+                            IsChecked = string.Equals(appearanceState, "Yes", StringComparison.OrdinalIgnoreCase) ||
+                                        string.Equals(appearanceState, "On", StringComparison.OrdinalIgnoreCase) ||
+                                        string.Equals(appearanceState, "1", StringComparison.OrdinalIgnoreCase) ||
+                                        string.Equals(appearanceState, "True", StringComparison.OrdinalIgnoreCase)
+                        });
+                    }
+                    finally
+                    {
+                        NativeMethods.FPDFPage_CloseAnnot(annot);
+                    }
+                }
+            }
+            finally
+            {
+                NativeMethods.FPDF_ClosePage(pageHandle);
+            }
+
+            return fields;
+        }, ct);
+    }
+
+    /// <inheritdoc />
+    public Task<bool> ApplyFormFieldInputAsync(
+        PdfPage page,
+        PdfFormField field,
+        string? textValue,
+        bool? isChecked = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(field);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) == 1, this);
+
+        return Task.Run(() =>
+        {
+            ct.ThrowIfCancellationRequested();
+            var formHandle = GetOrCreateFormHandle(page.DocumentHandle);
+            if (formHandle == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            var pageHandle = NativeMethods.FPDF_LoadPage(page.DocumentHandle, page.PageIndex);
+            if (pageHandle == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            try
+            {
+                var centerX = (field.Bounds.Left + field.Bounds.Right) * 0.5d;
+                var centerY = (field.Bounds.Top + field.Bounds.Bottom) * 0.5d;
+                NativeMethods.FORM_OnLButtonDown(formHandle, pageHandle, 0, centerX, centerY);
+                NativeMethods.FORM_OnLButtonUp(formHandle, pageHandle, 0, centerX, centerY);
+
+                if (field.FieldType == PdfFormFieldType.Text || field.FieldType == PdfFormFieldType.Signature)
+                {
+                    foreach (var rune in (textValue ?? string.Empty).EnumerateRunes())
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        NativeMethods.FORM_OnChar(formHandle, pageHandle, rune.Value, 0);
+                    }
+                }
+                else if ((field.FieldType == PdfFormFieldType.CheckBox || field.FieldType == PdfFormFieldType.RadioButton) &&
+                         isChecked == true)
+                {
+                    NativeMethods.FORM_OnLButtonDown(formHandle, pageHandle, 0, centerX, centerY);
+                    NativeMethods.FORM_OnLButtonUp(formHandle, pageHandle, 0, centerX, centerY);
+                }
+
+                NativeMethods.FORM_ForceToKillFocus(formHandle);
+                return true;
+            }
+            finally
+            {
+                NativeMethods.FPDF_ClosePage(pageHandle);
+            }
+        }, ct);
+    }
+
+    /// <inheritdoc />
     public void Close(PdfDocument document)
     {
         document.Dispose();
@@ -250,12 +341,166 @@ public sealed class PdfiumRenderService : IPdfRenderService
             CloseNativeDocument(documentHandle);
         }
 
+        foreach (var documentHandle in _formHandles.Keys.ToArray())
+        {
+            DestroyFormHandle(documentHandle);
+        }
+
         foreach (var cacheEntry in _pageCache)
         {
             cacheEntry.Value.Dispose();
         }
 
         _pageCache.Clear();
+    }
+
+    private SKBitmap RenderPageInternal(PdfPage page, double dpi, bool useCache)
+    {
+        var widthPx = Math.Max(1, (int)Math.Ceiling(page.WidthPt * dpi / 72d));
+        var heightPx = Math.Max(1, (int)Math.Ceiling(page.HeightPt * dpi / 72d));
+        var cacheKey = $"{page.DocumentHandle}:{page.PageIndex}:{dpi:F2}";
+
+        if (useCache && _pageCache.TryGetValue(cacheKey, out var cachedBitmap))
+        {
+            return cachedBitmap.Copy();
+        }
+
+        var pageHandle = NativeMethods.FPDF_LoadPage(page.DocumentHandle, page.PageIndex);
+        if (pageHandle == IntPtr.Zero)
+        {
+            throw new InvalidOperationException($"Failed to load page index {page.PageIndex}.");
+        }
+
+        IntPtr bitmapHandle = IntPtr.Zero;
+        try
+        {
+            bitmapHandle = NativeMethods.FPDFBitmap_Create(widthPx, heightPx, alpha: 1);
+            if (bitmapHandle == IntPtr.Zero)
+            {
+                throw new InvalidOperationException("Failed to create PDFium bitmap.");
+            }
+
+            NativeMethods.FPDFBitmap_FillRect(bitmapHandle, 0, 0, widthPx, heightPx, 0xFFFFFFFFu);
+            NativeMethods.FPDF_RenderPageBitmap(bitmapHandle, pageHandle, 0, 0, widthPx, heightPx, 0, RenderFlags);
+
+            var sourcePtr = NativeMethods.FPDFBitmap_GetBuffer(bitmapHandle);
+            var sourceStride = NativeMethods.FPDFBitmap_GetStride(bitmapHandle);
+
+            var renderedBitmap = new SKBitmap(widthPx, heightPx, SKColorType.Bgra8888, SKAlphaType.Premul);
+            var destinationPtr = renderedBitmap.GetPixels();
+            var destinationStride = renderedBitmap.RowBytes;
+            var rowLength = Math.Min(sourceStride, destinationStride);
+
+            var rowBuffer = new byte[rowLength];
+            for (var y = 0; y < heightPx; y++)
+            {
+                Marshal.Copy(IntPtr.Add(sourcePtr, y * sourceStride), rowBuffer, 0, rowLength);
+                Marshal.Copy(rowBuffer, 0, IntPtr.Add(destinationPtr, y * destinationStride), rowLength);
+            }
+
+            if (useCache)
+            {
+                if (_pageCache.TryAdd(cacheKey, renderedBitmap))
+                {
+                    return renderedBitmap.Copy();
+                }
+
+                renderedBitmap.Dispose();
+                return _pageCache[cacheKey].Copy();
+            }
+
+            return renderedBitmap;
+        }
+        finally
+        {
+            if (bitmapHandle != IntPtr.Zero)
+            {
+                NativeMethods.FPDFBitmap_Destroy(bitmapHandle);
+            }
+
+            NativeMethods.FPDF_ClosePage(pageHandle);
+        }
+    }
+
+    private IntPtr GetOrCreateFormHandle(IntPtr documentHandle)
+    {
+        if (_formHandles.TryGetValue(documentHandle, out var existing))
+        {
+            return existing;
+        }
+
+        var formFillInfo = new FPDF_FORMFILLINFO
+        {
+            version = 2
+        };
+        formFillInfo.Release = Marshal.GetFunctionPointerForDelegate(_releaseCallback);
+        var created = NativeMethods.FPDFDOC_InitFormFillEnvironment(documentHandle, ref formFillInfo);
+        if (created == IntPtr.Zero)
+        {
+            return IntPtr.Zero;
+        }
+
+        NativeMethods.FPDF_LoadXFA(documentHandle);
+        _formHandles.TryAdd(documentHandle, created);
+        return created;
+    }
+
+    private void DestroyFormHandle(IntPtr documentHandle)
+    {
+        if (_formHandles.TryRemove(documentHandle, out var handle) && handle != IntPtr.Zero)
+        {
+            NativeMethods.FPDFDOC_ExitFormFillEnvironment(handle);
+        }
+    }
+
+    private static PdfFormFieldType MapFormFieldType(int pdfiumType)
+    {
+        return pdfiumType switch
+        {
+            FormFieldTypeTextField => PdfFormFieldType.Text,
+            FormFieldTypeCheckBox => PdfFormFieldType.CheckBox,
+            FormFieldTypeRadioButton => PdfFormFieldType.RadioButton,
+            FormFieldTypeComboBox => PdfFormFieldType.ComboBox,
+            FormFieldTypeSignature => PdfFormFieldType.Signature,
+            FormFieldTypeListBox => PdfFormFieldType.ComboBox,
+            FormFieldTypePushButton => PdfFormFieldType.Unknown,
+            _ => PdfFormFieldType.Unknown
+        };
+    }
+
+    private static string GetAnnotationString(IntPtr annotHandle, string key)
+    {
+        var keyPtr = Marshal.StringToHGlobalAnsi(key);
+        try
+        {
+            var requiredBytes = NativeMethods.FPDFAnnot_GetStringValue(annotHandle, keyPtr, IntPtr.Zero, 0);
+            if (requiredBytes <= 0)
+            {
+                return string.Empty;
+            }
+
+            var buffer = Marshal.AllocHGlobal((int)requiredBytes);
+            try
+            {
+                var copied = NativeMethods.FPDFAnnot_GetStringValue(annotHandle, keyPtr, buffer, requiredBytes);
+                if (copied <= 0)
+                {
+                    return string.Empty;
+                }
+
+                var managedBuffer = new byte[(int)copied];
+                Marshal.Copy(buffer, managedBuffer, 0, (int)copied);
+                return Encoding.Unicode.GetString(managedBuffer).TrimEnd('\0');
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(keyPtr);
+        }
     }
 
     private static void EnsureLibraryInitialized()
@@ -286,6 +531,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
 
         if (_openDocuments.TryRemove(handle, out _))
         {
+            DestroyFormHandle(handle);
             NativeMethods.FPDF_CloseDocument(handle);
             RemoveCacheForDocument(handle);
         }
@@ -363,6 +609,15 @@ public sealed class PdfiumRenderService : IPdfRenderService
         public static extern void FPDF_CloseDocument(IntPtr document);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr FPDFDOC_InitFormFillEnvironment(IntPtr document, ref FPDF_FORMFILLINFO formInfo);
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void FPDFDOC_ExitFormFillEnvironment(IntPtr formHandle);
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int FPDF_LoadXFA(IntPtr document);
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
         public static extern IntPtr FPDFBitmap_Create(int width, int height, int alpha);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
@@ -379,6 +634,39 @@ public sealed class PdfiumRenderService : IPdfRenderService
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
         public static extern void FPDF_RenderPageBitmap(IntPtr bitmap, IntPtr page, int start_x, int start_y, int size_x, int size_y, int rotate, int flags);
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int FPDFPage_GetAnnotCount(IntPtr page);
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr FPDFPage_GetAnnot(IntPtr page, int index);
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void FPDFPage_CloseAnnot(IntPtr annot);
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int FPDFAnnot_GetSubtype(IntPtr annot);
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int FPDFAnnot_GetRect(IntPtr annot, out FS_RECTF rect);
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern uint FPDFAnnot_GetStringValue(IntPtr annot, IntPtr key, IntPtr value, uint buflen);
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int FPDFAnnot_GetFormFieldType(IntPtr formHandle, IntPtr annot);
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int FORM_OnLButtonDown(IntPtr formHandle, IntPtr page, int modifier, double pageX, double pageY);
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int FORM_OnLButtonUp(IntPtr formHandle, IntPtr page, int modifier, double pageX, double pageY);
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int FORM_OnChar(IntPtr formHandle, IntPtr page, int nChar, int modifier);
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int FORM_ForceToKillFocus(IntPtr formHandle);
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -387,6 +675,43 @@ public sealed class PdfiumRenderService : IPdfRenderService
         public readonly float Width;
         public readonly float Height;
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FS_RECTF
+    {
+        public float Left;
+        public float Bottom;
+        public float Right;
+        public float Top;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FPDF_FORMFILLINFO
+    {
+        public int version;
+        public IntPtr Release;
+        public IntPtr FFI_Invalidate;
+        public IntPtr FFI_OutputSelectedRect;
+        public IntPtr FFI_SetCursor;
+        public IntPtr FFI_SetTimer;
+        public IntPtr FFI_KillTimer;
+        public IntPtr FFI_GetLocalTime;
+        public IntPtr FFI_OnChange;
+        public IntPtr FFI_GetPage;
+        public IntPtr FFI_GetCurrentPage;
+        public IntPtr FFI_GetRotation;
+        public IntPtr FFI_ExecuteNamedAction;
+        public IntPtr FFI_SetTextFieldFocus;
+        public IntPtr FFI_DoURIAction;
+        public IntPtr FFI_DoGoToAction;
+        public IntPtr m_pJsPlatform;
+        public IntPtr xfa_disabled;
+        public IntPtr FFI_EmailTo;
+        public IntPtr FFI_GetPlatform;
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void ReleaseCallback(IntPtr formFillInfo);
 }
 
 /// <summary>

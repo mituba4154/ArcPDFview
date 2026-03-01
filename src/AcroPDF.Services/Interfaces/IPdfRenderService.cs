@@ -47,6 +47,39 @@ public interface IPdfRenderService : IDisposable
         CancellationToken ct = default);
 
     /// <summary>
+    /// 指定ページのフォームフィールドを取得します。
+    /// </summary>
+    /// <param name="page">対象ページ。</param>
+    /// <param name="ct">キャンセルトークン。</param>
+    /// <returns>フォームフィールド一覧。</returns>
+    Task<IReadOnlyList<PdfFormField>> GetFormFieldsAsync(PdfPage page, CancellationToken ct = default);
+
+    /// <summary>
+    /// フォームフィールド入力を PDFium FormFill API に送信します。
+    /// </summary>
+    /// <param name="page">対象ページ。</param>
+    /// <param name="field">対象フィールド。</param>
+    /// <param name="textValue">テキスト値。</param>
+    /// <param name="isChecked">チェック状態。</param>
+    /// <param name="ct">キャンセルトークン。</param>
+    /// <returns>入力処理を実行した場合は <see langword="true"/>。</returns>
+    Task<bool> ApplyFormFieldInputAsync(
+        PdfPage page,
+        PdfFormField field,
+        string? textValue,
+        bool? isChecked = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// 印刷/プレビュー用に指定 DPI でページをレンダリングします。
+    /// </summary>
+    /// <param name="page">対象ページ。</param>
+    /// <param name="dpi">描画 DPI。</param>
+    /// <param name="ct">キャンセルトークン。</param>
+    /// <returns>レンダリング済みビットマップ。</returns>
+    Task<SKBitmap> RenderPageForPrintAsync(PdfPage page, int dpi, CancellationToken ct = default);
+
+    /// <summary>
     /// ドキュメントを閉じます。
     /// </summary>
     /// <param name="document">対象ドキュメント。</param>
