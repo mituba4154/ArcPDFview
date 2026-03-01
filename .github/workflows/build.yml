@@ -1,5 +1,5 @@
 name: Build & Test
-
+https://github.com/mituba4154/ArcPDFview/pull/15
 # push または PR のたびに自動実行
 on:
   push:
@@ -39,6 +39,7 @@ jobs:
       - name: Test
         run: dotnet test --no-build --configuration Release --verbosity normal
 
+
       - name: Smoke test (Linux)
         if: runner.os == 'Linux'
         run: timeout 15s xvfb-run -a dotnet run --project src/AcroPDF.App/AcroPDF.App.csproj --no-build --configuration Release || [ $? -eq 124 ]
@@ -56,3 +57,4 @@ jobs:
           if ($process.ExitCode -ne 0) {
             exit $process.ExitCode
           }
+
