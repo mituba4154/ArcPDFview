@@ -3,7 +3,7 @@ name: Release Packages
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - "v*.*.*"
 
 permissions:
   contents: read
@@ -18,7 +18,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: "8.0.x"
 
       - name: Publish self-contained (win-x64)
         run: dotnet publish src/AcroPDF.App/AcroPDF.App.csproj -c Release -r win-x64 --self-contained -o publish/win-x64
@@ -28,7 +28,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path artifacts -Force | Out-Null
           Copy-Item publish/win-x64/AcroPDF.App.exe artifacts/ArcPDFview-win-x64.exe
-          Compress-Archive -Path publish/win-x64/* -DestinationPath artifacts/ArcPDFview-win-x64.msix -Force
+          Compress-Archive -Path publish/win-x64/* -DestinationPath artifacts/ArcPDFview-win-x64.zip -Force
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -45,7 +45,12 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: "8.0.x"
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libice-dev libsm-dev libfontconfig1 libglib2.0-dev libnss3
 
       - name: Publish self-contained (linux-x64)
         run: dotnet publish src/AcroPDF.App/AcroPDF.App.csproj -c Release -r linux-x64 --self-contained -o publish/linux-x64
@@ -106,7 +111,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download packaged artifacts
-        uses: actions/download-artifact@v4.1.3
+        uses: actions/download-artifact@v4
         with:
           path: release-artifacts
 
@@ -125,6 +130,6 @@ jobs:
           body_path: RELEASE_NOTES.md
           files: |
             release-artifacts/**/ArcPDFview-win-x64.exe
-            release-artifacts/**/ArcPDFview-win-x64.msix
+            release-artifacts/**/ArcPDFview-win-x64.zip
             release-artifacts/**/ArcPDFview-linux-x64.deb
             release-artifacts/**/ArcPDFview-linux-x64.AppImage
