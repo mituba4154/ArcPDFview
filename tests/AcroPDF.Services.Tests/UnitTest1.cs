@@ -1,9 +1,9 @@
 namespace AcroPDF.Services.Tests;
 
-public class UnitTest1
+public class PlaceholderTests
 {
     [Fact]
-    public void Test1()
+    public void PlaceholderPasses()
     {
 
     }

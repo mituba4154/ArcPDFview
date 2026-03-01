@@ -1,4 +1,4 @@
-# ArcPFDview — 完全仕様書
+# ArcPDFview — 完全仕様書
 
 > 正式名称: **ArcPDFview** / コードネーム: **AcroPDF**
 
