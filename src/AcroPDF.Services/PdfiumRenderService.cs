@@ -1,6 +1,7 @@
 #nullable enable
 
 using System.Collections.Concurrent;
+using System.Threading;
 using System.Runtime.InteropServices;
 using System.Text;
 using AcroPDF.Core.Models;
@@ -33,13 +34,20 @@ public sealed class PdfiumRenderService : IPdfRenderService
     private const int FormFieldTypeSignature = 7;
 
     private static readonly object InitLock = new();
+    private static readonly AsyncLocal<FileStream?> SaveStreamContext = new();
     private static bool _libraryInitialized;
 
     private readonly ConcurrentDictionary<string, SKBitmap> _pageCache = new();
     private readonly ConcurrentDictionary<IntPtr, byte> _openDocuments = new();
     private readonly ConcurrentDictionary<IntPtr, IntPtr> _formHandles = new();
+    private readonly ConcurrentDictionary<int, TimerRegistration> _formTimers = new();
     // Unmanaged FPDF_FORMFILLINFO.Release で使用するため、GC 回収されないようインスタンスで保持する。
     private readonly ReleaseCallback _releaseCallback;
+    private readonly WriteBlockCallback _saveCallback;
+    private readonly FormFillSetTimerCallback _setTimerCallback;
+    private readonly FormFillKillTimerCallback _killTimerCallback;
+    private readonly FormFillGetLocalTimeCallback _getLocalTimeCallback;
+    private int _nextFormTimerId;
     private int _disposed;
 
     /// <summary>
@@ -48,6 +56,10 @@ public sealed class PdfiumRenderService : IPdfRenderService
     public PdfiumRenderService()
     {
         _releaseCallback = static _ => { };
+        _saveCallback = SaveDocumentWriteBlock;
+        _setTimerCallback = OnSetFormTimer;
+        _killTimerCallback = OnKillFormTimer;
+        _getLocalTimeCallback = OnGetFormLocalTime;
         EnsureLibraryInitialized();
     }
 
@@ -646,10 +658,10 @@ public sealed class PdfiumRenderService : IPdfRenderService
 
                 if (field.FieldType == PdfFormFieldType.Text || field.FieldType == PdfFormFieldType.Signature)
                 {
-                    foreach (var rune in (textValue ?? string.Empty).EnumerateRunes())
+                    foreach (var ch in ExpandToPdfiumCharEvents(textValue ?? string.Empty))
                     {
                         ct.ThrowIfCancellationRequested();
-                        NativeMethods.FORM_OnChar(formHandle, pageHandle, rune.Value, 0);
+                        NativeMethods.FORM_OnChar(formHandle, pageHandle, ch, 0);
                     }
                 }
                 else if ((field.FieldType == PdfFormFieldType.CheckBox || field.FieldType == PdfFormFieldType.RadioButton) &&
@@ -697,6 +709,11 @@ public sealed class PdfiumRenderService : IPdfRenderService
         foreach (var cacheEntry in _pageCache)
         {
             cacheEntry.Value.Dispose();
+        }
+
+        foreach (var timerId in _formTimers.Keys.ToArray())
+        {
+            StopFormTimer(timerId);
         }
 
         _pageCache.Clear();
@@ -796,6 +813,9 @@ public sealed class PdfiumRenderService : IPdfRenderService
             version = 2
         };
         formFillInfo.Release = Marshal.GetFunctionPointerForDelegate(_releaseCallback);
+        formFillInfo.FFI_SetTimer = Marshal.GetFunctionPointerForDelegate(_setTimerCallback);
+        formFillInfo.FFI_KillTimer = Marshal.GetFunctionPointerForDelegate(_killTimerCallback);
+        formFillInfo.FFI_GetLocalTime = Marshal.GetFunctionPointerForDelegate(_getLocalTimeCallback);
         var created = NativeMethods.FPDFDOC_InitFormFillEnvironment(documentHandle, ref formFillInfo);
         if (created == IntPtr.Zero)
         {
@@ -908,7 +928,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
         }
     }
 
-    private static void SaveDocumentCopy(IntPtr documentHandle, string outputPath)
+    private void SaveDocumentCopy(IntPtr documentHandle, string outputPath)
     {
         var directory = Path.GetDirectoryName(outputPath);
         if (!string.IsNullOrWhiteSpace(directory))
@@ -917,23 +937,122 @@ public sealed class PdfiumRenderService : IPdfRenderService
         }
 
         using var stream = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.None);
-        WriteBlockCallback callback = (_, data, size) =>
-        {
-            var buffer = new byte[size];
-            Marshal.Copy(data, buffer, 0, checked((int)size));
-            stream.Write(buffer, 0, checked((int)size));
-            return 1;
-        };
-
         var fileWrite = new FPDF_FILEWRITE
         {
             version = 1,
-            WriteBlock = Marshal.GetFunctionPointerForDelegate(callback)
+            WriteBlock = Marshal.GetFunctionPointerForDelegate(_saveCallback)
         };
-        if (NativeMethods.FPDF_SaveAsCopy(documentHandle, ref fileWrite, PdfSaveNoIncremental) == 0)
+        var previousStream = SaveStreamContext.Value;
+        SaveStreamContext.Value = stream;
+        try
         {
-            throw new InvalidOperationException("Failed to save PDF document.");
+            if (NativeMethods.FPDF_SaveAsCopy(documentHandle, ref fileWrite, PdfSaveNoIncremental) == 0)
+            {
+                throw new InvalidOperationException("Failed to save PDF document.");
+            }
         }
+        finally
+        {
+            SaveStreamContext.Value = previousStream;
+        }
+    }
+
+    private static IEnumerable<int> ExpandToPdfiumCharEvents(string text)
+    {
+        foreach (var rune in text.EnumerateRunes())
+        {
+            var utf16 = rune.ToString();
+            for (var index = 0; index < utf16.Length; index++)
+            {
+                yield return utf16[index];
+            }
+        }
+    }
+
+    private int OnSetFormTimer(int elapseMs, IntPtr timerProc)
+    {
+        if (elapseMs <= 0 || timerProc == IntPtr.Zero)
+        {
+            return 0;
+        }
+
+        var timerId = Interlocked.Increment(ref _nextFormTimerId);
+        var interval = TimeSpan.FromMilliseconds(elapseMs);
+        var timer = new System.Threading.Timer(
+            static state => InvokeFormTimerCallback(state),
+            (Service: this, TimerId: timerId, TimerProc: timerProc),
+            interval,
+            interval);
+        _formTimers[timerId] = new TimerRegistration(timer);
+        return timerId;
+    }
+
+    private void OnKillFormTimer(int timerId)
+    {
+        StopFormTimer(timerId);
+    }
+
+    private static void InvokeFormTimerCallback(object? state)
+    {
+        if (state is not ValueTuple<PdfiumRenderService, int, IntPtr> info)
+        {
+            return;
+        }
+
+        var service = info.Item1;
+        var timerId = info.Item2;
+        var timerProc = info.Item3;
+        if (!service._formTimers.ContainsKey(timerId))
+        {
+            return;
+        }
+
+        var callback = Marshal.GetDelegateForFunctionPointer<FormFillTimerProcCallback>(timerProc);
+        callback(timerId);
+    }
+
+    private void StopFormTimer(int timerId)
+    {
+        if (_formTimers.TryRemove(timerId, out var registration))
+        {
+            registration.Timer.Dispose();
+        }
+    }
+
+    private static void OnGetFormLocalTime(IntPtr systemTimePtr)
+    {
+        if (systemTimePtr == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var now = DateTime.Now;
+        var systemTime = new FPDF_SYSTEMTIME
+        {
+            wYear = (ushort)now.Year,
+            wMonth = (ushort)now.Month,
+            wDayOfWeek = (ushort)now.DayOfWeek,
+            wDay = (ushort)now.Day,
+            wHour = (ushort)now.Hour,
+            wMinute = (ushort)now.Minute,
+            wSecond = (ushort)now.Second,
+            wMilliseconds = (ushort)now.Millisecond
+        };
+        Marshal.StructureToPtr(systemTime, systemTimePtr, fDeleteOld: false);
+    }
+
+    private static int SaveDocumentWriteBlock(IntPtr pThis, IntPtr data, uint size)
+    {
+        var stream = SaveStreamContext.Value;
+        if (stream is null)
+        {
+            return 0;
+        }
+
+        var buffer = new byte[size];
+        Marshal.Copy(data, buffer, 0, checked((int)size));
+        stream.Write(buffer, 0, checked((int)size));
+        return 1;
     }
 
     private static string GetAttachmentName(IntPtr attachment)
@@ -1212,11 +1331,38 @@ public sealed class PdfiumRenderService : IPdfRenderService
         public IntPtr WriteBlock;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FPDF_SYSTEMTIME
+    {
+        public ushort wYear;
+        public ushort wMonth;
+        public ushort wDayOfWeek;
+        public ushort wDay;
+        public ushort wHour;
+        public ushort wMinute;
+        public ushort wSecond;
+        public ushort wMilliseconds;
+    }
+
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate void ReleaseCallback(IntPtr formFillInfo);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate int WriteBlockCallback(IntPtr pThis, IntPtr data, uint size);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate int FormFillSetTimerCallback(int elapse, IntPtr timerProc);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void FormFillKillTimerCallback(int timerId);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void FormFillGetLocalTimeCallback(IntPtr systemTime);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void FormFillTimerProcCallback(int timerId);
+
+    private readonly record struct TimerRegistration(System.Threading.Timer Timer);
 }
 
 /// <summary>

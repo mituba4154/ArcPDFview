@@ -260,10 +260,12 @@ public partial class MainWindow : Window
         _ = RenderActiveTabAsync();
     }
 
-    private async Task RenderActiveTabAsync()
+    private async Task RenderActiveTabAsync(CancellationToken externalCt = default)
     {
         CancelRender();
-        _renderCts = new CancellationTokenSource();
+        _renderCts = externalCt.CanBeCanceled
+            ? CancellationTokenSource.CreateLinkedTokenSource(externalCt)
+            : new CancellationTokenSource();
         var token = _renderCts.Token;
 
         var tab = _activeTab;
@@ -402,6 +404,14 @@ public partial class MainWindow : Window
         }
 
         await RenderVisibleContinuousPagesAsync(tab, ct).ConfigureAwait(true);
+        foreach (var state in _continuousPageStates)
+        {
+            if (state.OverlayCanvas is not null && state.PageControl is not null)
+            {
+                RebuildCommentOverlay(tab, state.Page, state.OverlayCanvas);
+            }
+        }
+
         ScrollContinuousToCurrentPage();
         UpdateStatusBar();
     }
@@ -2176,6 +2186,7 @@ public partial class MainWindow : Window
             .Select(point => new Avalonia.Point(point.X, point.Y))
             .ToArray();
         _activeFreehandPreview.Points = points;
+        AnnotationOverlayCanvas.InvalidateVisual();
     }
 
     private void RemoveFreehandPreview()
@@ -2964,7 +2975,7 @@ public partial class MainWindow : Window
             await Task.Delay(ZoomDebounceDelay, token).ConfigureAwait(true);
             if (!token.IsCancellationRequested)
             {
-                await RenderActiveTabAsync().ConfigureAwait(true);
+                await RenderActiveTabAsync(token).ConfigureAwait(true);
             }
         }
         catch (OperationCanceledException)
