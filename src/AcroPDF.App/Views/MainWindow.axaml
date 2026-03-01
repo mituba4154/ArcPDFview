@@ -1,15 +1,18 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:AcroPDF.App.Controls"
         x:Class="AcroPDF.App.Views.MainWindow"
         Title="AcroPDF"
         Width="1280"
         Height="800"
-        Background="{DynamicResource BgDark}">
-  <Grid>
-    <TextBlock HorizontalAlignment="Center"
-               VerticalAlignment="Center"
-               FontSize="24"
-               Foreground="{DynamicResource TextPrimary}"
-               Text="AcroPDF" />
+        Background="{DynamicResource BgDark}"
+        DragDrop.AllowDrop="True">
+  <Grid RowDefinitions="Auto,*">
+    <TextBlock Margin="12"
+               Foreground="{DynamicResource TextSecondary}"
+               Text="PDF をドラッグ&amp;ドロップするか、起動引数で指定してください。" />
+    <controls:PdfPageControl x:Name="PageControl"
+                             Grid.Row="1"
+                             Margin="12" />
   </Grid>
 </Window>
