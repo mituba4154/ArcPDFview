@@ -18,6 +18,10 @@ public sealed class AnnotationService : IAnnotationService
     private const int AnnotSubtypeStrikeOut = 13;
     private const int AnnotColorTypeNormal = 0;
     private const int SaveFlagNoIncremental = 1;
+    private const uint CommentColorR = 48;
+    private const uint CommentColorG = 112;
+    private const uint CommentColorB = 255;
+    private const uint CommentColorA = 255;
 
     /// <inheritdoc />
     public Task<IReadOnlyList<Annotation>> LoadAnnotationsAsync(PdfDocument document, CancellationToken ct = default)
@@ -159,7 +163,6 @@ public sealed class AnnotationService : IAnnotationService
                     PageNumber = pageNumber,
                     Bounds = bounds,
                     Text = GetAnnotationString(annotHandle, "Contents"),
-                    Comment = GetAnnotationString(annotHandle, "Contents"),
                     Author = GetAnnotationString(annotHandle, "T"),
                     IsOpen = false
                 };
@@ -215,7 +218,7 @@ public sealed class AnnotationService : IAnnotationService
             {
                 SetAnnotationString(annotHandle, "Contents", comment.Text);
                 SetAnnotationString(annotHandle, "T", comment.Author);
-                NativeMethods.FPDFAnnot_SetColor(annotHandle, AnnotColorTypeNormal, 48, 112, 255, 255);
+                NativeMethods.FPDFAnnot_SetColor(annotHandle, AnnotColorTypeNormal, CommentColorR, CommentColorG, CommentColorB, CommentColorA);
             }
             else if (annotation is HighlightAnnotation highlight)
             {
@@ -237,7 +240,7 @@ public sealed class AnnotationService : IAnnotationService
             Directory.CreateDirectory(directory);
         }
 
-        var tempPath = Path.Combine(Path.GetTempPath(), $"arcpdf-annot-{Guid.NewGuid():N}.pdf");
+        var tempPath = Path.Combine(Path.GetTempPath(), $"acropdf-annot-{Guid.NewGuid():N}.pdf");
         try
         {
             using (var writer = new PdfiumFileWriter(tempPath))
@@ -303,10 +306,9 @@ public sealed class AnnotationService : IAnnotationService
     private static void SetAnnotationString(IntPtr annotHandle, string key, string value)
     {
         var keyPtr = Marshal.StringToHGlobalAnsi(key);
-        var valueWithNull = $"{value}\0";
         try
         {
-            NativeMethods.FPDFAnnot_SetStringValue(annotHandle, keyPtr, valueWithNull);
+            NativeMethods.FPDFAnnot_SetStringValue(annotHandle, keyPtr, value);
         }
         finally
         {
@@ -396,9 +398,14 @@ public sealed class AnnotationService : IAnnotationService
 
         private int WriteBlock(IntPtr _, IntPtr data, uint size)
         {
-            if (data == IntPtr.Zero || size == 0)
+            if (size == 0)
             {
                 return 1;
+            }
+
+            if (data == IntPtr.Zero)
+            {
+                return 0;
             }
 
             var buffer = new byte[size];

@@ -29,6 +29,8 @@ public partial class MainWindow : Window
     private const int ThumbnailWidthPx = 140;
     private const double A4AspectRatio = 0.707d;
     private const double SplitPaneMinWidthPx = 120d;
+    private const double DefaultCommentHalfHeightPt = 18d;
+    private const double DefaultCommentWidthPt = 120d;
     private readonly IPdfRenderService _pdfRenderService;
     private readonly IAnnotationService _annotationService;
     private readonly SearchService _searchService;
@@ -716,7 +718,6 @@ public partial class MainWindow : Window
             textBox.TextChanged += (_, _) =>
             {
                 comment.Text = textBox.Text ?? string.Empty;
-                comment.Comment = comment.Text;
                 comment.Touch();
                 tab.Document.MarkModified();
             };
@@ -973,15 +974,19 @@ public partial class MainWindow : Window
         var selectedBounds = _selectionPdfBoundsMap.TryGetValue((tab, page.PageNumber), out var boundsList)
             ? boundsList
             : [];
+        var hasSelectedText = !string.IsNullOrWhiteSpace(_selectedText);
         var bounds = selectedBounds.Count > 0
             ? selectedBounds[0]
-            : new PdfTextBounds(tab.MouseX, tab.MouseY + 18, tab.MouseX + 120, tab.MouseY - 18);
+            : new PdfTextBounds(
+                tab.MouseX,
+                tab.MouseY + DefaultCommentHalfHeightPt,
+                tab.MouseX + DefaultCommentWidthPt,
+                tab.MouseY - DefaultCommentHalfHeightPt);
         var comment = new CommentAnnotation
         {
             PageNumber = page.PageNumber,
             Bounds = bounds,
-            Text = string.IsNullOrWhiteSpace(_selectedText) ? string.Empty : _selectedText,
-            Comment = string.IsNullOrWhiteSpace(_selectedText) ? null : _selectedText,
+            Text = hasSelectedText ? _selectedText : string.Empty,
             Author = Environment.UserName,
             IsOpen = true
         };
@@ -1246,6 +1251,11 @@ public partial class MainWindow : Window
 
         foreach (var tab in _tabs.ToArray())
         {
+            if (tab.Document.IsModified)
+            {
+                _annotationService.SaveAnnotationsAsync(tab.Document).GetAwaiter().GetResult();
+            }
+
             CloseTabCore(tab);
         }
 
@@ -1717,7 +1727,7 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private void OnWindowKeyDown(object? sender, KeyEventArgs e)
+    private async void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.F11)
         {
@@ -1734,7 +1744,7 @@ public partial class MainWindow : Window
 
         if ((e.KeyModifiers & KeyModifiers.Control) != 0 && e.Key == Key.W)
         {
-            _ = CloseTabAsync(targetTab);
+            await CloseTabAsync(targetTab).ConfigureAwait(true);
             e.Handled = true;
             return;
         }

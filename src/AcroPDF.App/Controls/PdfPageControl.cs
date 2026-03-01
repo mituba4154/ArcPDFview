@@ -86,6 +86,8 @@ public abstract class SKGLControlView : Control
 /// </summary>
 public sealed class PdfPageControl : SKGLControlView
 {
+    private const byte HighlightOverlayAlpha = 89;
+
     static PdfPageControl()
     {
         SearchHighlightsProperty.Changed.AddClassHandler<PdfPageControl>((control, _) => control.InvalidateSurface());
@@ -300,7 +302,7 @@ public sealed class PdfPageControl : SKGLControlView
             {
                 using var fillPaint = new SKPaint
                 {
-                    Color = color.WithAlpha(89),
+                    Color = color.WithAlpha(HighlightOverlayAlpha),
                     IsAntialias = true,
                     Style = SKPaintStyle.Fill
                 };
