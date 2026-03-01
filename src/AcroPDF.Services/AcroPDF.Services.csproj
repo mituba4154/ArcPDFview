@@ -4,10 +4,16 @@
     <ProjectReference Include="..\AcroPDF.Core\AcroPDF.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="bblanchon.PDFium" Version="147.0.7699" />
+    <PackageReference Include="SkiaSharp" Version="2.88.9" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
 </Project>
