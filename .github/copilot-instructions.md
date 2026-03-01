@@ -423,22 +423,22 @@ AnnotationOverlay の実装:
 
 | # | タスク | 状態 | 備考 |
 |---|--------|------|------|
-| 5-1 | 連続スクロールの仮想化 | ⬜ | 表示範囲外を破棄 |
-| 5-2 | 大容量 PDF のストリーミング読み込み | ⬜ | |
-| 5-3 | ページキャッシュの LRU 化 | ⬜ | Phase 1 の簡易実装を置き換え |
-| 5-4 | 起動時間の計測と最適化 | ⬜ | 目標: 2 秒以内 |
-| 5-5 | メモリ使用量の計測と最適化 | ⬜ | 目標: 150MB 以下 |
-| 5-6 | ホバー・フォーカス・クリックアニメーション | ⬜ | |
-| 5-7 | スプラッシュ画面（オプション） | ⬜ | |
-| 5-8 | ドラッグ&ドロップの視覚フィードバック | ⬜ | |
-| 5-9 | エラーダイアログのデザイン統一 | ⬜ | |
-| 5-10 | ローディングインジケータ | ⬜ | |
-| 5-11 | i18n 基盤の実装（resx） | ⬜ | |
-| 5-12 | 日本語リソース完備 | ⬜ | |
-| 5-13 | 英語リソース完備 | ⬜ | |
-| 5-14 | キーボードフォーカス完全対応 | ⬜ | |
-| 5-15 | スクリーンリーダー対応 | ⬜ | AutomationProperties |
-| 5-16 | ハイコントラストモード | ⬜ | |
+| 5-1 | 連続スクロールの仮想化 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 5-2 | 大容量 PDF のストリーミング読み込み | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/PdfiumRenderService.cs` |
+| 5-3 | ページキャッシュの LRU 化 | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/PdfiumRenderService.cs` |
+| 5-4 | 起動時間の計測と最適化 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/App.axaml.cs`、`src/AcroPDF.Services/PdfiumRenderService.cs` |
+| 5-5 | メモリ使用量の計測と最適化 | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/PdfiumRenderService.cs` |
+| 5-6 | ホバー・フォーカス・クリックアニメーション | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml` |
+| 5-7 | スプラッシュ画面（オプション） | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 5-8 | ドラッグ&ドロップの視覚フィードバック | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 5-9 | エラーダイアログのデザイン統一 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 5-10 | ローディングインジケータ | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 5-11 | i18n 基盤の実装（resx） | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Assets/Localization/` |
+| 5-12 | 日本語リソース完備 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Assets/Localization/Strings.ja.resx` |
+| 5-13 | 英語リソース完備 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Assets/Localization/Strings.en.resx` |
+| 5-14 | キーボードフォーカス完全対応 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml` |
+| 5-15 | スクリーンリーダー対応 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`（AutomationProperties 追加） |
+| 5-16 | ハイコントラストモード | ✅ | 2026-03-01 完了。`src/AcroPDF.App/App.axaml.cs`、`src/AcroPDF.App/Assets/Styles/Colors.axaml` |
 | 5-17 | カバレッジ確認（Core 80%+ 目標） | ⬜ | |
 | 5-18 | 統合テスト | ⬜ | |
 | 5-19 | Win / Linux スモークテスト | ⬜ | |

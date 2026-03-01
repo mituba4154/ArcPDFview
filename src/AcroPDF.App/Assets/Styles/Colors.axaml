@@ -17,6 +17,13 @@
   <Color x:Key="Highlight">#59ffb400</Color>
   <Color x:Key="Selection">#5964a0ff</Color>
 
+  <Color x:Key="Light.BgBase">#f5f5f5</Color>
+  <Color x:Key="Light.BgPanel">#ffffff</Color>
+  <Color x:Key="Light.BgToolbar">#e8e8e8</Color>
+  <Color x:Key="Light.TextPrimary">#1a1a1a</Color>
+  <Color x:Key="Light.TextSecondary">#555555</Color>
+  <Color x:Key="Light.Border">#d0d0d0</Color>
+
   <SolidColorBrush x:Key="BgDarkBrush" Color="{DynamicResource BgDark}" />
   <SolidColorBrush x:Key="BgPanelBrush" Color="{DynamicResource BgPanel}" />
   <SolidColorBrush x:Key="BgPanel2Brush" Color="{DynamicResource BgPanel2}" />

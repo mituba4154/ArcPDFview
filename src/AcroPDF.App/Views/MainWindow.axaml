@@ -11,6 +11,15 @@
         DragDrop.AllowDrop="True"
         KeyDown="OnWindowKeyDown"
         PointerWheelChanged="OnWindowPointerWheelChanged">
+  <Window.Styles>
+    <Style Selector="Button, ToggleButton, TabItem">
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.15" />
+        </Transitions>
+      </Setter>
+    </Style>
+  </Window.Styles>
   <Grid RowDefinitions="36,40,*,22">
     <Border Grid.Row="0"
             Background="{DynamicResource BgDarkBrush}"
@@ -189,6 +198,14 @@
           <Button x:Name="PrintButton"
                   Content="🖨 印刷"
                   Click="OnPrintClicked" />
+          <ComboBox x:Name="ThemeComboBox"
+                    Width="110"
+                    SelectedIndex="0"
+                    SelectionChanged="OnThemeSelectionChanged">
+            <ComboBoxItem Content="OS" />
+            <ComboBoxItem Content="Light" />
+            <ComboBoxItem Content="Dark" />
+          </ComboBox>
         </StackPanel>
       </Grid>
     </Border>
@@ -399,6 +416,64 @@
                     Click="OnFloatingArrowClicked" />
             <Button Content="スタンプ"
                     Click="OnFloatingStampClicked" />
+          </StackPanel>
+        </Border>
+        <Border x:Name="LoadingOverlay"
+                IsVisible="False"
+                Background="#88000000"
+                Opacity="0">
+          <Border.Transitions>
+            <Transitions>
+              <DoubleTransition Property="Opacity" Duration="0:0:0.2" />
+            </Transitions>
+          </Border.Transitions>
+          <Border HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  Padding="12"
+                  CornerRadius="8"
+                  Background="{DynamicResource BgPanel2Brush}">
+            <StackPanel Spacing="8">
+              <ProgressBar IsIndeterminate="True" Width="180" />
+              <TextBlock x:Name="LoadingTextBlock"
+                         Text="読み込み中..."
+                         HorizontalAlignment="Center"
+                         Foreground="{DynamicResource TextPrimaryBrush}" />
+            </StackPanel>
+          </Border>
+        </Border>
+        <Border x:Name="DragDropOverlay"
+                IsVisible="False"
+                Background="#66000000">
+          <Border HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  Padding="16"
+                  CornerRadius="10"
+                  BorderBrush="{DynamicResource AccentBrush}"
+                  BorderThickness="2"
+                  Background="#88000000">
+            <TextBlock x:Name="DragDropHintTextBlock"
+                       Text="ここにドロップ"
+                       FontSize="18"
+                       Foreground="{DynamicResource TextPrimaryBrush}" />
+          </Border>
+        </Border>
+        <Border x:Name="SplashOverlay"
+                IsVisible="True"
+                Opacity="1"
+                Background="{DynamicResource BgDarkBrush}">
+          <Border.Transitions>
+            <Transitions>
+              <DoubleTransition Property="Opacity" Duration="0:0:0.3" />
+            </Transitions>
+          </Border.Transitions>
+          <StackPanel HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      Spacing="10">
+            <TextBlock x:Name="SplashTitleTextBlock"
+                       Text="AcroPDF"
+                       FontSize="28"
+                       Foreground="{DynamicResource AccentBrush}" />
+            <ProgressBar IsIndeterminate="True" Width="220" />
           </StackPanel>
         </Border>
       </Grid>

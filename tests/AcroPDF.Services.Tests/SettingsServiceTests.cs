@@ -13,6 +13,7 @@ public sealed class SettingsServiceTests
         var settings = new AppSettings
         {
             DefaultZoom = 1.25d,
+            Theme = ThemePreference.Dark,
             RecentFiles = ["/tmp/a.pdf"],
             LastSession = [new SessionEntry("/tmp/a.pdf", 3)]
         };
@@ -21,6 +22,7 @@ public sealed class SettingsServiceTests
         var loaded = service.Load();
 
         Assert.Equal(1.25d, loaded.DefaultZoom);
+        Assert.Equal(ThemePreference.Dark, loaded.Theme);
         Assert.Single(loaded.RecentFiles);
         Assert.Single(loaded.LastSession);
         Assert.Equal(3, loaded.LastSession[0].PageNumber);

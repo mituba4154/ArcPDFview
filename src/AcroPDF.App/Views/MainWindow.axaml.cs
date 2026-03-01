@@ -5,6 +5,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Text;
 using AcroPDF.App.Controls;
+using AcroPDF.App.Assets.Localization;
 using AcroPDF.Core.Models;
 using AcroPDF.Services;
 using AcroPDF.Services.Interfaces;
@@ -115,11 +116,17 @@ public partial class MainWindow : Window
         _searchViewModel = new SearchViewModel(_searchService);
         _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
         _settings = _settingsService.Load();
+        AppStrings.CurrentCulture = string.Equals(_settings.Language, "en", StringComparison.OrdinalIgnoreCase)
+            ? new CultureInfo("en")
+            : new CultureInfo("ja");
         InitializeComponent();
+        ApplyLocalizedText();
         ContinuousPageItemsControl.ItemsSource = _continuousPageItems;
+        ContinuousScrollViewer.EffectiveViewportChanged += OnContinuousViewportChanged;
         InitializeStaticStatusText();
         InitializeTextSelectionContextMenu();
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
+        AddHandler(DragDrop.DragLeaveEvent, OnDragLeave);
         AddHandler(DragDrop.DropEvent, OnDrop);
         Closed += OnClosed;
         Opened += OnOpened;
@@ -280,6 +287,7 @@ public partial class MainWindow : Window
         SetEmptyStateVisible(false);
         UpdateToolbarState();
         UpdateStatusBar();
+        SetLoadingOverlayVisible(true);
 
         try
         {
@@ -299,6 +307,10 @@ public partial class MainWindow : Window
         catch (OperationCanceledException)
         {
             // 表示更新途中のキャンセルは正常系。
+        }
+        finally
+        {
+            SetLoadingOverlayVisible(false);
         }
     }
 
@@ -2081,11 +2093,18 @@ public partial class MainWindow : Window
         if (e.Data.Contains(DataFormats.Files))
         {
             e.DragEffects = DragDropEffects.Copy;
+            DragDropOverlay.IsVisible = true;
         }
+    }
+
+    private void OnDragLeave(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        DragDropOverlay.IsVisible = false;
     }
 
     private void OnDrop(object? sender, DragEventArgs e)
     {
+        DragDropOverlay.IsVisible = false;
         if (!e.Data.Contains(DataFormats.Files))
         {
             return;
@@ -3025,6 +3044,24 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OnContinuousViewportChanged(object? sender, EffectiveViewportChangedEventArgs e)
+    {
+        var tab = _activeTab;
+        if (tab is null || !tab.IsContinuousMode || _renderCts is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await RenderVisibleContinuousPagesAsync(tab, _renderCts.Token).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            // 表示更新途中のキャンセルは正常系。
+        }
+    }
+
     private async void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
         var ctrl = (e.KeyModifiers & KeyModifiers.Control) != 0;
@@ -3201,8 +3238,13 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private void OnOpened(object? sender, EventArgs e)
+    private async void OnOpened(object? sender, EventArgs e)
     {
+        await Task.Delay(1000).ConfigureAwait(true);
+        SplashOverlay.Opacity = 0d;
+        await Task.Delay(300).ConfigureAwait(true);
+        SplashOverlay.IsVisible = false;
+
         if (_restoreAttempted)
         {
             return;
@@ -3238,6 +3280,39 @@ public partial class MainWindow : Window
     private void ApplySettingsToToolbar()
     {
         ZoomComboBox.SelectedIndex = 3;
+        ThemeComboBox.SelectedIndex = _settings.Theme switch
+        {
+            ThemePreference.Light => 1,
+            ThemePreference.Dark => 2,
+            _ => 0
+        };
+    }
+
+    private void ApplyLocalizedText()
+    {
+        OpenFileButton.Content = AppStrings.Get("Open");
+        RecentFilesButton.Content = AppStrings.Get("Recent");
+        EmptyStateTextBlock.Text = AppStrings.Get("EmptyState");
+        DragDropHintTextBlock.Text = AppStrings.Get("DropPrompt");
+        LoadingTextBlock.Text = AppStrings.Get("Loading");
+        SplashTitleTextBlock.Text = AppStrings.Get("SplashTitle");
+    }
+
+    private void OnThemeSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        var preference = ThemeComboBox.SelectedIndex switch
+        {
+            1 => ThemePreference.Light,
+            2 => ThemePreference.Dark,
+            _ => ThemePreference.System
+        };
+
+        if (Application.Current is App app)
+        {
+            app.SetThemePreference(preference);
+        }
+
+        _settings = _settings with { Theme = preference };
     }
 
     private void InitializeAnnotationTooling()
@@ -3399,15 +3474,7 @@ public partial class MainWindow : Window
 
     private async Task<AnnotationSaveDecision> ShowUnsavedAnnotationDialogAsync()
     {
-        var dialog = new Window
-        {
-            Width = 360,
-            Height = 170,
-            CanResize = false,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Title = "未保存の注釈",
-            Background = new SolidColorBrush((Color)Application.Current!.FindResource("BgDark")!)
-        };
+        var dialog = CreateStyledDialog("未保存の注釈", DialogSeverity.Warning, 360, 170);
 
         var result = AnnotationSaveDecision.Cancel;
         var panel = new StackPanel { Margin = new Thickness(16), Spacing = 12 };
@@ -3442,15 +3509,7 @@ public partial class MainWindow : Window
 
     private async Task<bool> ShowReloadConfirmDialogAsync()
     {
-        var dialog = new Window
-        {
-            Width = 320,
-            Height = 150,
-            CanResize = false,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Title = "ファイル変更検知",
-            Background = new SolidColorBrush((Color)Application.Current!.FindResource("BgDark")!)
-        };
+        var dialog = CreateStyledDialog("ファイル変更検知", DialogSeverity.Information, 320, 150);
 
         var result = false;
         var panel = new StackPanel { Margin = new Thickness(16), Spacing = 12 };
@@ -3489,15 +3548,7 @@ public partial class MainWindow : Window
         options.RangeStartPage = Math.Clamp(options.RangeStartPage, 1, tab.PageCount);
         options.RangeEndPage = Math.Clamp(options.RangeEndPage, 1, tab.PageCount);
 
-        var dialog = new Window
-        {
-            Width = 780,
-            Height = 540,
-            CanResize = true,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Title = "印刷",
-            Background = new SolidColorBrush((Color)Application.Current!.FindResource("BgDark")!)
-        };
+        var dialog = CreateStyledDialog("印刷", DialogSeverity.Information, 780, 540, canResize: true);
 
         var allPagesRadio = new RadioButton { GroupName = "PrintRange", Content = "全ページ", IsChecked = options.RangeMode == PrintPageRangeMode.AllPages };
         var currentPageRadio = new RadioButton { GroupName = "PrintRange", Content = $"現在ページ ({tab.CurrentPage})", IsChecked = options.RangeMode == PrintPageRangeMode.CurrentPage };
@@ -3782,6 +3833,26 @@ public partial class MainWindow : Window
         return new Bitmap(stream);
     }
 
+    private static Window CreateStyledDialog(string title, DialogSeverity severity, double width, double height, bool canResize = false)
+    {
+        var icon = severity switch
+        {
+            DialogSeverity.Warning => "⚠ ",
+            DialogSeverity.Error => "⛔ ",
+            _ => "ℹ "
+        };
+
+        return new Window
+        {
+            Width = width,
+            Height = height,
+            CanResize = canResize,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Title = $"{icon}{title}",
+            Background = new SolidColorBrush((Color)Application.Current!.FindResource("BgDark")!)
+        };
+    }
+
     private void SaveSessionSettings()
     {
         var session = _tabs
@@ -3791,6 +3862,20 @@ public partial class MainWindow : Window
         _settingsService.SaveSession(session);
         _settings = _settings with { RecentFiles = recent };
         _settingsService.Save(_settings);
+    }
+
+    private void SetLoadingOverlayVisible(bool visible)
+    {
+        if (visible)
+        {
+            LoadingOverlay.IsVisible = true;
+            LoadingOverlay.Opacity = 1d;
+        }
+        else
+        {
+            LoadingOverlay.Opacity = 0d;
+            LoadingOverlay.IsVisible = false;
+        }
     }
 
     private sealed class ContinuousPageItemState
@@ -3815,6 +3900,13 @@ public partial class MainWindow : Window
         public double RenderedZoomLevel { get; set; }
 
         public bool IsRendering { get; set; }
+    }
+
+    private enum DialogSeverity
+    {
+        Information,
+        Warning,
+        Error
     }
 
     private sealed class WatchedFile : IDisposable

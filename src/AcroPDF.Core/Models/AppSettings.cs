@@ -24,6 +24,27 @@ public enum ViewMode
 }
 
 /// <summary>
+/// アプリケーションテーマの選択モードです。
+/// </summary>
+public enum ThemePreference
+{
+    /// <summary>
+    /// OS 設定に追従します。
+    /// </summary>
+    System = 0,
+
+    /// <summary>
+    /// ライトテーマを使用します。
+    /// </summary>
+    Light = 1,
+
+    /// <summary>
+    /// ダークテーマを使用します。
+    /// </summary>
+    Dark = 2
+}
+
+/// <summary>
 /// セッション復元用のタブ情報を表します。
 /// </summary>
 /// <param name="FilePath">PDF ファイルパス。</param>
@@ -94,6 +115,11 @@ public sealed record AppSettings
     /// UI 言語コードを取得します。
     /// </summary>
     public string Language { get; init; } = "ja";
+
+    /// <summary>
+    /// テーマ設定を取得します。
+    /// </summary>
+    public ThemePreference Theme { get; init; } = ThemePreference.System;
 
     /// <summary>
     /// 最近開いたファイル一覧を取得します。

@@ -677,6 +677,7 @@ public record AppSettings
     public double RightSidebarWidth { get; init; } = 240;
     public bool ShowStatusBar { get; init; } = true;
     public string Language { get; init; } = "ja";
+    public ThemePreference Theme { get; init; } = ThemePreference.System;
 }
 ```
 
