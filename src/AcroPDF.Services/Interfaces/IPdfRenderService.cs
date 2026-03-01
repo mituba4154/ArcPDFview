@@ -29,6 +29,24 @@ public interface IPdfRenderService : IDisposable
     Task<SKBitmap> RenderPageAsync(PdfPage page, double zoomLevel, CancellationToken ct = default);
 
     /// <summary>
+    /// ビュー表示用に現在ページ（必要に応じて見開き/回転）をレンダリングします。
+    /// </summary>
+    /// <param name="document">対象ドキュメント。</param>
+    /// <param name="currentPage">現在ページ番号（1 始まり）。</param>
+    /// <param name="zoomLevel">ズーム倍率（1.0 = 100%）。</param>
+    /// <param name="twoPageMode">見開きモード。</param>
+    /// <param name="rotationDegrees">回転角度。</param>
+    /// <param name="ct">キャンセルトークン。</param>
+    /// <returns>レンダリング結果。ページ不正時は <see langword="null"/>。</returns>
+    Task<SKBitmap?> RenderCompositePageAsync(
+        PdfDocument document,
+        int currentPage,
+        double zoomLevel,
+        bool twoPageMode,
+        int rotationDegrees,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// ドキュメントを閉じます。
     /// </summary>
     /// <param name="document">対象ドキュメント。</param>

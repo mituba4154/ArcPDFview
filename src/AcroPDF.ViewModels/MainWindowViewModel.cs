@@ -33,4 +33,39 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// </summary>
     [ObservableProperty]
     private TabViewModel? _splitSecondaryTab;
+
+    /// <summary>
+    /// タブを追加します。
+    /// </summary>
+    /// <param name="tab">追加対象。</param>
+    public void AddTab(TabViewModel tab)
+    {
+        ArgumentNullException.ThrowIfNull(tab);
+        Tabs.Add(tab);
+    }
+
+    /// <summary>
+    /// タブを削除します。
+    /// </summary>
+    /// <param name="tab">削除対象。</param>
+    /// <returns>削除結果。</returns>
+    public bool RemoveTab(TabViewModel tab)
+    {
+        ArgumentNullException.ThrowIfNull(tab);
+        return Tabs.Remove(tab);
+    }
+
+    /// <summary>
+    /// タブ一覧を初期化します。
+    /// </summary>
+    /// <param name="tabs">タブ一覧。</param>
+    public void ReplaceTabs(IEnumerable<TabViewModel> tabs)
+    {
+        ArgumentNullException.ThrowIfNull(tabs);
+        Tabs.Clear();
+        foreach (var tab in tabs)
+        {
+            Tabs.Add(tab);
+        }
+    }
 }

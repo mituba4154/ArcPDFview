@@ -21,6 +21,19 @@ public sealed class MainWindowViewModelTests
         Assert.Same(tab, vm.SplitSecondaryTab);
     }
 
+    [Fact]
+    public void AddAndRemoveTab_UpdatesCollection()
+    {
+        using var tab = CreateTab(1);
+        var vm = new MainWindowViewModel();
+
+        vm.AddTab(tab);
+        var removed = vm.RemoveTab(tab);
+
+        Assert.True(removed);
+        Assert.Empty(vm.Tabs);
+    }
+
     private static TabViewModel CreateTab(int pageCount)
     {
         var pages = Enumerable.Range(0, pageCount)

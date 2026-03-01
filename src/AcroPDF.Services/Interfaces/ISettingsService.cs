@@ -38,4 +38,16 @@ public interface ISettingsService
     /// </summary>
     /// <param name="filePath">削除するファイルパス。</param>
     void RemoveRecentFile(string filePath);
+
+    /// <summary>
+    /// セッション情報を保存します。
+    /// </summary>
+    /// <param name="sessionEntries">保存するセッション一覧。</param>
+    void SaveSession(IReadOnlyList<SessionEntry> sessionEntries);
+
+    /// <summary>
+    /// セッション情報を読み込みます。
+    /// </summary>
+    /// <returns>セッション一覧。</returns>
+    IReadOnlyList<SessionEntry> LoadSession();
 }

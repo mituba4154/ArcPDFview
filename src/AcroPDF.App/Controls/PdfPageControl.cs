@@ -1,24 +1,38 @@
 #nullable enable
 
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using SkiaSharp;
 
 namespace AcroPDF.App.Controls;
 
 /// <summary>
-/// SkiaSharp キャンバス描画を提供するベースコントロールです。
+/// GPU キャッシュ描画を行う Skia ベースビューです。
 /// </summary>
-public abstract class SKCanvasView : Control
+public abstract class SKGLControlView : Control
 {
+    private bool _isSurfaceDirty = true;
+    private WriteableBitmap? _cachedFrame;
+
     /// <summary>
     /// 描画時に呼び出されます。
     /// </summary>
     /// <param name="canvas">描画先キャンバス。</param>
     /// <param name="info">描画先情報。</param>
     protected abstract void OnPaintSurface(SKCanvas canvas, SKImageInfo info);
+
+    /// <summary>
+    /// 描画キャッシュを無効化します。
+    /// </summary>
+    protected void InvalidateSurface()
+    {
+        _isSurfaceDirty = true;
+        InvalidateVisual();
+    }
 
     /// <inheritdoc />
     public sealed override void Render(DrawingContext context)
@@ -28,31 +42,57 @@ public abstract class SKCanvasView : Control
         var width = Math.Max(1, (int)Bounds.Width);
         var height = Math.Max(1, (int)Bounds.Height);
 
-        using var surfaceBitmap = new SKBitmap(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
-        using var canvas = new SKCanvas(surfaceBitmap);
-        canvas.Clear(SKColors.Transparent);
+        if (_cachedFrame is null || _cachedFrame.PixelSize.Width != width || _cachedFrame.PixelSize.Height != height)
+        {
+            _cachedFrame?.Dispose();
+            _cachedFrame = null;
+            _isSurfaceDirty = true;
+        }
 
-        OnPaintSurface(canvas, new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul));
+        if (_isSurfaceDirty)
+        {
+            using var surfaceBitmap = new SKBitmap(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
+            using var canvas = new SKCanvas(surfaceBitmap);
+            canvas.Clear(SKColors.Transparent);
+            OnPaintSurface(canvas, new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul));
 
-        using var image = SKImage.FromBitmap(surfaceBitmap);
-        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
-        using var stream = new MemoryStream(data.ToArray());
-        using var bitmap = new Bitmap(stream);
+            _cachedFrame ??= new WriteableBitmap(
+                new PixelSize(surfaceBitmap.Width, surfaceBitmap.Height),
+                new Vector(96, 96),
+                PixelFormat.Bgra8888,
+                AlphaFormat.Premul);
+            using var frameBuffer = _cachedFrame.Lock();
+            Marshal.Copy(surfaceBitmap.Bytes, 0, frameBuffer.Address, surfaceBitmap.ByteCount);
+            _isSurfaceDirty = false;
+        }
 
-        context.DrawImage(bitmap, new Rect(0, 0, bitmap.Size.Width, bitmap.Size.Height), Bounds);
+        if (_cachedFrame is not null)
+        {
+            context.DrawImage(_cachedFrame, new Rect(0, 0, _cachedFrame.Size.Width, _cachedFrame.Size.Height), Bounds);
+        }
+    }
+
+    /// <inheritdoc />
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        _cachedFrame?.Dispose();
+        _cachedFrame = null;
     }
 }
 
 /// <summary>
 /// PDF ページを表示するカスタムコントロールです。
 /// </summary>
-public sealed class PdfPageControl : SKCanvasView
+public sealed class PdfPageControl : SKGLControlView
 {
     static PdfPageControl()
     {
-        SearchHighlightsProperty.Changed.AddClassHandler<PdfPageControl>((control, _) => control.InvalidateVisual());
-        CurrentSearchHighlightProperty.Changed.AddClassHandler<PdfPageControl>((control, _) => control.InvalidateVisual());
-        SelectionHighlightsProperty.Changed.AddClassHandler<PdfPageControl>((control, _) => control.InvalidateVisual());
+        SearchHighlightsProperty.Changed.AddClassHandler<PdfPageControl>((control, _) => control.InvalidateSurface());
+        CurrentSearchHighlightProperty.Changed.AddClassHandler<PdfPageControl>((control, _) => control.InvalidateSurface());
+        SelectionHighlightsProperty.Changed.AddClassHandler<PdfPageControl>((control, _) => control.InvalidateSurface());
+        ZoomLevelProperty.Changed.AddClassHandler<PdfPageControl>((control, _) => control.InvalidateSurface());
+        CurrentPageProperty.Changed.AddClassHandler<PdfPageControl>((control, _) => control.InvalidateSurface());
     }
 
     /// <summary>
@@ -138,7 +178,9 @@ public sealed class PdfPageControl : SKCanvasView
     {
         _bitmap?.Dispose();
         _bitmap = bitmap?.Copy();
-        InvalidateVisual();
+        _gpuCachedImage?.Dispose();
+        _gpuCachedImage = _bitmap is null ? null : SKImage.FromBitmap(_bitmap);
+        InvalidateSurface();
     }
 
     /// <inheritdoc />
@@ -146,7 +188,7 @@ public sealed class PdfPageControl : SKCanvasView
     {
         canvas.Clear(new SKColor(0x3A, 0x3A, 0x3A));
 
-        if (_bitmap is null)
+        if (_bitmap is null || _gpuCachedImage is null)
         {
             return;
         }
@@ -158,7 +200,7 @@ public sealed class PdfPageControl : SKCanvasView
         var top = (info.Height - scaledHeight) / 2f;
         var destinationRect = new SKRect(left, top, left + scaledWidth, top + scaledHeight);
 
-        canvas.DrawBitmap(_bitmap, sourceRect, destinationRect);
+        canvas.DrawImage(_gpuCachedImage, sourceRect, destinationRect);
         DrawHighlights(canvas, destinationRect, SearchHighlights, new SKColor(255, 180, 0, 89));
         if (CurrentSearchHighlight is Rect current)
         {
@@ -172,11 +214,14 @@ public sealed class PdfPageControl : SKCanvasView
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
+        _gpuCachedImage?.Dispose();
+        _gpuCachedImage = null;
         _bitmap?.Dispose();
         _bitmap = null;
     }
 
     private SKBitmap? _bitmap;
+    private SKImage? _gpuCachedImage;
 
     private void DrawHighlights(SKCanvas canvas, SKRect destinationRect, IReadOnlyList<Rect>? highlights, SKColor color)
     {

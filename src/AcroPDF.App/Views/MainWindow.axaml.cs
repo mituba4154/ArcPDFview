@@ -28,10 +28,10 @@ public partial class MainWindow : Window
     private const double ScreenDpi = 96d;
     private const int ThumbnailWidthPx = 140;
     private const double A4AspectRatio = 0.707d;
-    private const int TwoPageSpacingPx = 16;
     private const double SplitPaneMinWidthPx = 120d;
     private readonly IPdfRenderService _pdfRenderService;
     private readonly SearchService _searchService;
+    private readonly SearchViewModel _searchViewModel;
     private readonly ISettingsService _settingsService;
     private readonly MainWindowViewModel _mainWindowViewModel = new();
     private readonly List<TabViewModel> _tabs = [];
@@ -71,6 +71,7 @@ public partial class MainWindow : Window
     {
         _pdfRenderService = pdfRenderService ?? throw new ArgumentNullException(nameof(pdfRenderService));
         _searchService = new SearchService();
+        _searchViewModel = new SearchViewModel(_searchService);
         _settingsService = new SettingsService();
         _settings = _settingsService.Load();
         InitializeComponent();
@@ -156,7 +157,7 @@ public partial class MainWindow : Window
 
         _bookmarkMap[tab] = bookmarks;
         _tabs.Add(tab);
-        _mainWindowViewModel.Tabs = new System.Collections.ObjectModel.ObservableCollection<TabViewModel>(_tabs);
+        _mainWindowViewModel.AddTab(tab);
         TrackFileChanges(tab);
         _settingsService.AddRecentFile(filePath);
         RebuildRecentFilesMenu();
@@ -296,36 +297,13 @@ public partial class MainWindow : Window
 
     private async Task<SKBitmap?> RenderTabBitmapAsync(TabViewModel tab, CancellationToken ct)
     {
-        if (tab.PageCount <= 0 || tab.CurrentPage <= 0 || tab.CurrentPage > tab.PageCount)
-        {
-            return null;
-        }
-
-        var page = tab.Document.Pages[tab.CurrentPage - 1];
-        using var first = await _pdfRenderService.RenderPageAsync(page, tab.ZoomLevel, ct).ConfigureAwait(true);
-        var bitmap = first.Copy();
-        if (tab.IsTwoPageMode && tab.CurrentPage < tab.PageCount)
-        {
-            var secondPage = tab.Document.Pages[tab.CurrentPage];
-            using var second = await _pdfRenderService.RenderPageAsync(secondPage, tab.ZoomLevel, ct).ConfigureAwait(true);
-            using var secondCopy = second.Copy();
-            var merged = new SKBitmap(bitmap.Width + secondCopy.Width + TwoPageSpacingPx, Math.Max(bitmap.Height, secondCopy.Height), SKColorType.Bgra8888, SKAlphaType.Premul);
-            using var canvas = new SKCanvas(merged);
-            canvas.Clear(SKColors.Transparent);
-            canvas.DrawBitmap(bitmap, 0, 0);
-            canvas.DrawBitmap(secondCopy, bitmap.Width + TwoPageSpacingPx, 0);
-            bitmap.Dispose();
-            bitmap = merged;
-        }
-
-        if (tab.RotationDegrees == 0)
-        {
-            return bitmap;
-        }
-
-        var rotated = RotateBitmap(bitmap, tab.RotationDegrees);
-        bitmap.Dispose();
-        return rotated;
+        return await _pdfRenderService.RenderCompositePageAsync(
+            tab.Document,
+            tab.CurrentPage,
+            tab.ZoomLevel,
+            tab.IsTwoPageMode,
+            tab.RotationDegrees,
+            ct).ConfigureAwait(true);
     }
 
     private async Task RenderContinuousModeAsync(TabViewModel tab, CancellationToken ct)
@@ -710,7 +688,7 @@ public partial class MainWindow : Window
         var token = _searchCts.Token;
         try
         {
-            var results = await _searchService.SearchAsync(
+            var results = await _searchViewModel.SearchAsync(
                 _activeTab.Document,
                 _activeTab.SearchQuery,
                 new SearchOptions(_activeTab.IsSearchCaseSensitive, _activeTab.IsSearchRegex),
@@ -861,6 +839,7 @@ public partial class MainWindow : Window
         {
             return;
         }
+        _mainWindowViewModel.RemoveTab(tab);
 
         tab.ThumbnailUpdated -= OnThumbnailUpdated;
         tab.CancelThumbnailGeneration();
@@ -877,7 +856,6 @@ public partial class MainWindow : Window
         }
         _pdfRenderService.Close(tab.Document);
         tab.Dispose();
-        _mainWindowViewModel.Tabs = new System.Collections.ObjectModel.ObservableCollection<TabViewModel>(_tabs);
 
         if (_tabs.Count == 0)
         {
@@ -1611,17 +1589,18 @@ public partial class MainWindow : Window
         }
 
         _restoreAttempted = true;
-        if (_skipSessionRestore || !_settings.RestoreSessionOnStartup || _settings.LastSession.Count == 0)
+        var sessionEntries = _settingsService.LoadSession();
+        if (_skipSessionRestore || !_settings.RestoreSessionOnStartup || sessionEntries.Count == 0)
         {
             return;
         }
 
-        _ = RestoreLastSessionAsync();
+        _ = RestoreLastSessionAsync(sessionEntries);
     }
 
-    private async Task RestoreLastSessionAsync()
+    private async Task RestoreLastSessionAsync(IReadOnlyList<SessionEntry> sessionEntries)
     {
-        foreach (var entry in _settings.LastSession.Where(entry => File.Exists(entry.FilePath)))
+        foreach (var entry in sessionEntries.Where(entry => File.Exists(entry.FilePath)))
         {
             var opened = await OpenFileAsync(entry.FilePath, entry.PageNumber, activate: false).ConfigureAwait(true);
             if (opened is not null)
@@ -1809,29 +1788,9 @@ public partial class MainWindow : Window
             .Select(tab => new SessionEntry(tab.Document.FilePath, tab.CurrentPage))
             .ToArray();
         var recent = _settingsService.GetRecentFiles();
-        _settings = _settings with { LastSession = session, RecentFiles = recent };
+        _settingsService.SaveSession(session);
+        _settings = _settings with { RecentFiles = recent };
         _settingsService.Save(_settings);
-    }
-
-    private static SKBitmap RotateBitmap(SKBitmap source, int degrees)
-    {
-        var normalized = ((degrees % 360) + 360) % 360;
-        if (normalized == 0)
-        {
-            return source.Copy();
-        }
-
-        var swapSize = normalized is 90 or 270;
-        var width = swapSize ? source.Height : source.Width;
-        var height = swapSize ? source.Width : source.Height;
-        var rotated = new SKBitmap(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
-        using var canvas = new SKCanvas(rotated);
-        canvas.Clear(SKColors.Transparent);
-        canvas.Translate(width / 2f, height / 2f);
-        canvas.RotateDegrees(normalized);
-        canvas.Translate(-source.Width / 2f, -source.Height / 2f);
-        canvas.DrawBitmap(source, 0, 0);
-        return rotated;
     }
 
     private sealed class WatchedFile : IDisposable
