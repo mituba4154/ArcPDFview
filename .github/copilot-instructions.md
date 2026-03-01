@@ -155,23 +155,23 @@ Avalonia のテーマ:
 
 ### Phase 1 — コア PDF 表示機能
 
-**ステータス:** ⬜ 未着手  
-**最終更新日:** —  
-**担当 Codex セッション:** —  
+**ステータス:** 🔄 作業中  
+**最終更新日:** 2026-03-01  
+**担当 Codex セッション:** Codex (GPT-5)  
 **前提:** Phase 0 の全タスク完了
 
 | # | タスク | 状態 | 備考 |
 |---|--------|------|------|
-| 1-1 | `IPdfRenderService` インターフェース実装 | ⬜ | |
-| 1-2 | `PdfiumRenderService` の実装 | ⬜ | PDFium の `FPDFDocument_*` API を使用 |
-| 1-3 | `PdfDocument` / `PdfPage` モデルの実装 | ⬜ | |
-| 1-4 | パスワード付き PDF の対応 | ⬜ | ダイアログが必要 |
-| 1-5 | ファイルドラッグ&ドロップ | ⬜ | Avalonia の `DragDrop` イベント |
-| 1-6 | 起動引数からファイルを開く | ⬜ | `App.axaml.cs` の `OnStartup` |
-| 1-7 | `PdfPageControl` (SkiaSharp) の作成 | ⬜ | `SKCanvasView` を継承 |
-| 1-8 | 指定 DPI でページを `SKBitmap` にレンダリング | ⬜ | |
-| 1-9 | ページキャッシュの実装 | ⬜ | `ConcurrentDictionary<int, SKBitmap>` |
-| 1-10 | ズーム機能（25%〜400%） | ⬜ | |
+| 1-1 | `IPdfRenderService` インターフェース実装 | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/Interfaces/IPdfRenderService.cs` |
+| 1-2 | `PdfiumRenderService` の実装 | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/PdfiumRenderService.cs` |
+| 1-3 | `PdfDocument` / `PdfPage` モデルの実装 | ✅ | 2026-03-01 完了。`src/AcroPDF.Core/Models/PdfDocument.cs`、`src/AcroPDF.Core/Models/PdfPage.cs` |
+| 1-4 | パスワード付き PDF の対応 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/PasswordDialogWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 1-5 | ファイルドラッグ&ドロップ | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 1-6 | 起動引数からファイルを開く | ✅ | 2026-03-01 完了。`src/AcroPDF.App/App.axaml.cs` |
+| 1-7 | `PdfPageControl` (SkiaSharp) の作成 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Controls/PdfPageControl.cs` |
+| 1-8 | 指定 DPI でページを `SKBitmap` にレンダリング | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/PdfiumRenderService.cs` |
+| 1-9 | ページキャッシュの実装 | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/PdfiumRenderService.cs` |
+| 1-10 | ズーム機能（25%〜400%） | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/PdfiumRenderService.cs`、`src/AcroPDF.App/Controls/PdfPageControl.cs` |
 | 1-11 | Ctrl+スクロールでズーム | ⬜ | |
 | 1-12 | 幅/ページ/実寸に合わせる | ⬜ | |
 | 1-13 | ツールバーのナビゲーションボタン | ⬜ | |

@@ -24,7 +24,14 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.MainWindow = new Views.MainWindow();
+            var mainWindow = new Views.MainWindow();
+            desktop.MainWindow = mainWindow;
+
+            var startupFile = desktop.Args?.FirstOrDefault(static path => !string.IsNullOrWhiteSpace(path));
+            if (!string.IsNullOrWhiteSpace(startupFile))
+            {
+                mainWindow.OpenFromStartupArgument(startupFile);
+            }
         }
 
         base.OnFrameworkInitializationCompleted();
