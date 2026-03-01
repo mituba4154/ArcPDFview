@@ -86,6 +86,7 @@ public partial class MainWindow : Window
     private Avalonia.Controls.Shapes.Polyline? _activeFreehandPreview;
     private Point? _shapeStartPdfPoint;
     private int? _thumbnailDragPageNumber;
+    private bool _isInitialized;
 
     /// <summary>
     /// <see cref="MainWindow"/> の新しいインスタンスを初期化します。
@@ -138,6 +139,7 @@ public partial class MainWindow : Window
         ApplySettingsToToolbar();
         InitializeAnnotationTooling();
         RebuildRecentFilesMenu();
+        _isInitialized = true;
     }
 
     private static T ResolveRequiredService<T>()
@@ -3312,6 +3314,11 @@ public partial class MainWindow : Window
 
     private void OnThemeSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
+        if (!_isInitialized)
+        {
+            return;
+        }
+
         var preference = ThemeComboBox.SelectedIndex switch
         {
             1 => ThemePreference.Light,
