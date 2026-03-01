@@ -86,11 +86,14 @@ public abstract class SKGLControlView : Control
 /// </summary>
 public sealed class PdfPageControl : SKGLControlView
 {
+    private const byte HighlightOverlayAlpha = 89;
+
     static PdfPageControl()
     {
         SearchHighlightsProperty.Changed.AddClassHandler<PdfPageControl>((control, _) => control.InvalidateSurface());
         CurrentSearchHighlightProperty.Changed.AddClassHandler<PdfPageControl>((control, _) => control.InvalidateSurface());
         SelectionHighlightsProperty.Changed.AddClassHandler<PdfPageControl>((control, _) => control.InvalidateSurface());
+        AnnotationVisualsProperty.Changed.AddClassHandler<PdfPageControl>((control, _) => control.InvalidateSurface());
         ZoomLevelProperty.Changed.AddClassHandler<PdfPageControl>((control, _) => control.InvalidateSurface());
         CurrentPageProperty.Changed.AddClassHandler<PdfPageControl>((control, _) => control.InvalidateSurface());
     }
@@ -112,6 +115,12 @@ public sealed class PdfPageControl : SKGLControlView
     /// </summary>
     public static readonly StyledProperty<IReadOnlyList<Rect>> SelectionHighlightsProperty =
         AvaloniaProperty.Register<PdfPageControl, IReadOnlyList<Rect>>(nameof(SelectionHighlights), []);
+
+    /// <summary>
+    /// 注釈描画情報一覧プロパティです。
+    /// </summary>
+    public static readonly StyledProperty<IReadOnlyList<AnnotationVisual>> AnnotationVisualsProperty =
+        AvaloniaProperty.Register<PdfPageControl, IReadOnlyList<AnnotationVisual>>(nameof(AnnotationVisuals), []);
 
     /// <summary>
     /// ズーム倍率プロパティです。
@@ -171,6 +180,15 @@ public sealed class PdfPageControl : SKGLControlView
     }
 
     /// <summary>
+    /// 注釈描画情報一覧を取得または設定します。
+    /// </summary>
+    public IReadOnlyList<AnnotationVisual> AnnotationVisuals
+    {
+        get => GetValue(AnnotationVisualsProperty);
+        set => SetValue(AnnotationVisualsProperty, value);
+    }
+
+    /// <summary>
     /// 表示用ビットマップを設定します。
     /// </summary>
     /// <param name="bitmap">表示するビットマップ。</param>
@@ -208,6 +226,7 @@ public sealed class PdfPageControl : SKGLControlView
         }
 
         DrawHighlights(canvas, destinationRect, SelectionHighlights, new SKColor(120, 200, 255, 96));
+        DrawAnnotationVisuals(canvas, destinationRect, AnnotationVisuals);
     }
 
     /// <inheritdoc />
@@ -254,4 +273,89 @@ public sealed class PdfPageControl : SKGLControlView
             canvas.DrawRect(rect, paint);
         }
     }
+
+    private void DrawAnnotationVisuals(SKCanvas canvas, SKRect destinationRect, IReadOnlyList<AnnotationVisual>? annotations)
+    {
+        if (_bitmap is null || annotations is null || annotations.Count == 0)
+        {
+            return;
+        }
+
+        var scaleX = destinationRect.Width / Math.Max(1, _bitmap.Width);
+        var scaleY = destinationRect.Height / Math.Max(1, _bitmap.Height);
+        foreach (var annotation in annotations)
+        {
+            var bounds = annotation.Bounds;
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                continue;
+            }
+
+            var rect = new SKRect(
+                destinationRect.Left + (float)(bounds.X * scaleX),
+                destinationRect.Top + (float)(bounds.Y * scaleY),
+                destinationRect.Left + (float)((bounds.X + bounds.Width) * scaleX),
+                destinationRect.Top + (float)((bounds.Y + bounds.Height) * scaleY));
+            var color = new SKColor(annotation.Color.R, annotation.Color.G, annotation.Color.B, annotation.Color.A);
+
+            if (annotation.Kind == AnnotationVisualKind.Highlight)
+            {
+                using var fillPaint = new SKPaint
+                {
+                    Color = color.WithAlpha(HighlightOverlayAlpha),
+                    IsAntialias = true,
+                    Style = SKPaintStyle.Fill
+                };
+                canvas.DrawRect(rect, fillPaint);
+                continue;
+            }
+
+            using var linePaint = new SKPaint
+            {
+                Color = color,
+                IsAntialias = true,
+                StrokeWidth = 2f,
+                Style = SKPaintStyle.Stroke
+            };
+
+            if (annotation.Kind == AnnotationVisualKind.Underline)
+            {
+                canvas.DrawLine(rect.Left, rect.Bottom - 1f, rect.Right, rect.Bottom - 1f, linePaint);
+            }
+            else
+            {
+                var y = rect.MidY;
+                canvas.DrawLine(rect.Left, y, rect.Right, y, linePaint);
+            }
+        }
+    }
+}
+
+/// <summary>
+/// 注釈描画情報を表します。
+/// </summary>
+/// <param name="Bounds">表示矩形。</param>
+/// <param name="Kind">描画種別。</param>
+/// <param name="Color">表示色。</param>
+public readonly record struct AnnotationVisual(Rect Bounds, AnnotationVisualKind Kind, Color Color);
+
+/// <summary>
+/// 注釈描画種別を表します。
+/// </summary>
+public enum AnnotationVisualKind
+{
+    /// <summary>
+    /// ハイライト表示。
+    /// </summary>
+    Highlight,
+
+    /// <summary>
+    /// 下線表示。
+    /// </summary>
+    Underline,
+
+    /// <summary>
+    /// 取り消し線表示。
+    /// </summary>
+    Strikethrough
 }

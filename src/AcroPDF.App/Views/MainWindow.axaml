@@ -168,13 +168,18 @@
         <ScrollViewer x:Name="SinglePageScrollViewer"
                       HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Auto">
-          <controls:PdfPageControl x:Name="PageControl"
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Top"
-                                    Margin="16"
-                                    PointerMoved="OnSinglePagePointerMoved"
-                                    PointerPressed="OnSinglePagePointerPressed"
-                                    PointerReleased="OnSinglePagePointerReleased" />
+          <Grid HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                Margin="16">
+            <controls:PdfPageControl x:Name="PageControl"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Top"
+                                      PointerMoved="OnSinglePagePointerMoved"
+                                      PointerPressed="OnSinglePagePointerPressed"
+                                      PointerReleased="OnSinglePagePointerReleased" />
+            <Canvas x:Name="AnnotationOverlayCanvas"
+                    IsHitTestVisible="True" />
+          </Grid>
         </ScrollViewer>
         <ScrollViewer x:Name="ContinuousScrollViewer"
                       HorizontalScrollBarVisibility="Auto"
