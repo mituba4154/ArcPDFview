@@ -38,9 +38,10 @@ jobs:
       # テスト実行
       - name: Test
         run: dotnet test --no-build --configuration Release --verbosity normal
+
   package:
-    needs: build          # Build & Test が通ってから実行
-    if: startsWith(github.ref, 'refs/tags/v')  # タグ push 時のみ
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
     strategy:
       matrix:
         include:
@@ -48,10 +49,12 @@ jobs:
             rid: win-x64
           - os: ubuntu-latest
             rid: linux-x64
+
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -59,12 +62,7 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Publish
-        run: |
-          dotnet publish src/AcroPDF.App/AcroPDF.App.csproj \
-            -c Release \
-            -r ${{ matrix.rid }} \
-            --self-contained \
-            -o ./publish/${{ matrix.rid }}
+        run: dotnet publish src/AcroPDF.App/AcroPDF.App.csproj -c Release -r ${{ matrix.rid }} --self-contained -o ./publish/${{ matrix.rid }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
