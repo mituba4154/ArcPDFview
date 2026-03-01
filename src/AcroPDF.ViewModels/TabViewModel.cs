@@ -98,6 +98,12 @@ public sealed partial class TabViewModel : ObservableObject, IDisposable
     private int _rotationDegrees;
 
     /// <summary>
+    /// 印刷オプションを取得または設定します。
+    /// </summary>
+    [ObservableProperty]
+    private PrintOptions _printOptions = new();
+
+    /// <summary>
     /// 検索バーの表示状態を取得または設定します。
     /// </summary>
     [ObservableProperty]
@@ -254,6 +260,16 @@ public sealed partial class TabViewModel : ObservableObject, IDisposable
     public void CancelThumbnailGeneration()
     {
         _thumbnailCts.Cancel();
+    }
+
+    /// <summary>
+    /// 現在の印刷設定に基づいて印刷対象ページ番号を取得します。
+    /// </summary>
+    /// <returns>印刷対象ページ番号一覧（1 始まり）。</returns>
+    public IReadOnlyList<int> ResolvePrintPages()
+    {
+        PrintOptions.CurrentPage = CurrentPage;
+        return PrintOptions.ResolvePageNumbers(PageCount);
     }
 
     /// <summary>

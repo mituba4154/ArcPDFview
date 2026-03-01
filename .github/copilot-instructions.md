@@ -370,15 +370,15 @@ AnnotationOverlay の実装:
 
 | # | タスク | 状態 | 備考 |
 |---|--------|------|------|
-| 4-1 | フォームフィールドの検出と表示 | ⬜ | `FPDF_FormFillInfo` API |
-| 4-2 | テキストフィールドの入力 | ⬜ | |
-| 4-3 | チェックボックス / ラジオボタン | ⬜ | |
-| 4-4 | ドロップダウン | ⬜ | |
-| 4-5 | 署名フィールド | ⬜ | |
-| 4-6 | 印刷ダイアログ (Ctrl+P) | ⬜ | OS 印刷 API 経由 |
-| 4-7 | ページ範囲指定 | ⬜ | |
-| 4-8 | 印刷プレビュー | ⬜ | |
-| 4-9 | 用紙サイズ・向き・部数 | ⬜ | |
+| 4-1 | フォームフィールドの検出と表示 | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/PdfiumRenderService.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 4-2 | テキストフィールドの入力 | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/PdfiumRenderService.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 4-3 | チェックボックス / ラジオボタン | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 4-4 | ドロップダウン | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 4-5 | 署名フィールド | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 4-6 | 印刷ダイアログ (Ctrl+P) | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 4-7 | ページ範囲指定 | ✅ | 2026-03-01 完了。`src/AcroPDF.Core/Models/PrintOptions.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 4-8 | 印刷プレビュー | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 4-9 | 用紙サイズ・向き・部数 | ✅ | 2026-03-01 完了。`src/AcroPDF.Core/Models/PrintOptions.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
 | 4-10 | ページ抽出 | ⬜ | `FPDF_CopyViewerPreferences` |
 | 4-11 | ページ削除 | ⬜ | `FPDFPage_Delete` |
 | 4-12 | ページ回転（保存まで反映） | ⬜ | `FPDFPage_SetRotation` |

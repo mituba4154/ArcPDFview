@@ -186,6 +186,9 @@
           <Button x:Name="RotateButton"
                   Content="⟳ 回転"
                   Click="OnRotateClicked" />
+          <Button x:Name="PrintButton"
+                  Content="🖨 印刷"
+                  Click="OnPrintClicked" />
         </StackPanel>
       </Grid>
     </Border>

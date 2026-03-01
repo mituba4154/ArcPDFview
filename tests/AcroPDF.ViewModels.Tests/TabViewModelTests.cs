@@ -118,6 +118,20 @@ public class TabViewModelTests
         Assert.Equal(expected, tab.RotationDegrees);
     }
 
+    [Fact]
+    public void ResolvePrintPages_UsesPrintOptionsRange()
+    {
+        using var tab = new TabViewModel(CreateDocument(8));
+        tab.CurrentPage = 4;
+        tab.PrintOptions.RangeMode = PrintPageRangeMode.CurrentPage;
+        Assert.Equal(new[] { 4 }, tab.ResolvePrintPages());
+
+        tab.PrintOptions.RangeMode = PrintPageRangeMode.PageRange;
+        tab.PrintOptions.RangeStartPage = 6;
+        tab.PrintOptions.RangeEndPage = 7;
+        Assert.Equal(new[] { 6, 7 }, tab.ResolvePrintPages());
+    }
+
     private static PdfDocument CreateDocument(int pageCount)
     {
         var pages = Enumerable.Range(0, pageCount)

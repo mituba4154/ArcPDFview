@@ -13,6 +13,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using SkiaSharp;
@@ -44,6 +45,7 @@ public partial class MainWindow : Window
     private readonly Dictionary<TabViewModel, IReadOnlyList<PdfBookmarkItem>> _bookmarkMap = [];
     private readonly Dictionary<(TabViewModel Tab, int PageNumber), IReadOnlyList<Avalonia.Rect>> _selectionHighlightMap = [];
     private readonly Dictionary<(TabViewModel Tab, int PageNumber), IReadOnlyList<PdfTextBounds>> _selectionPdfBoundsMap = [];
+    private readonly Dictionary<(TabViewModel Tab, int PageNumber), IReadOnlyList<PdfFormField>> _formFieldMap = [];
     private readonly Dictionary<TabViewModel, WatchedFile> _watchers = [];
     private readonly List<TabViewModel> _splitDetachedTabs = [];
     private CancellationTokenSource? _searchCts;
@@ -285,6 +287,7 @@ public partial class MainWindow : Window
         PageControl.SetBitmap(bitmap);
         ApplyHighlights(PageControl, tab, page);
         RebuildCommentOverlay(tab, page);
+        await RebuildFormOverlayAsync(tab, page, ct).ConfigureAwait(true);
         UpdateStatusBar();
     }
 
@@ -296,6 +299,7 @@ public partial class MainWindow : Window
         AnnotationOverlayCanvas.Children.Clear();
         ContinuousPagePanel.Children.Clear();
         _continuousPageMap.Clear();
+        _formFieldMap.Clear();
 
         var secondaryTab = _splitSecondaryTab ?? primaryTab;
         await RenderSplitPaneAsync(primaryTab, PrimarySplitPageControl, ct).ConfigureAwait(true);
@@ -336,6 +340,7 @@ public partial class MainWindow : Window
         ContinuousScrollViewer.IsVisible = true;
         ContinuousPagePanel.Children.Clear();
         _continuousPageMap.Clear();
+        _formFieldMap.Clear();
 
         foreach (var page in tab.Document.Pages)
         {
@@ -804,6 +809,281 @@ public partial class MainWindow : Window
             Canvas.SetTop(noteBorder, Math.Max(0, anchor.Y));
             AnnotationOverlayCanvas.Children.Add(noteBorder);
         }
+    }
+
+    private async Task RebuildFormOverlayAsync(TabViewModel tab, PdfPage page, CancellationToken ct)
+    {
+        IReadOnlyList<PdfFormField> fields;
+        if (_formFieldMap.TryGetValue((tab, page.PageNumber), out var cached))
+        {
+            fields = cached;
+        }
+        else
+        {
+            fields = await _pdfRenderService.GetFormFieldsAsync(page, ct).ConfigureAwait(true);
+            _formFieldMap[(tab, page.PageNumber)] = fields;
+        }
+
+        foreach (var field in fields)
+        {
+            var bounds = ConvertBoundsToPixelRect(field.Bounds, page, tab.ZoomLevel);
+            if (bounds.Width <= 1 || bounds.Height <= 1)
+            {
+                continue;
+            }
+
+            Control? control = field.FieldType switch
+            {
+                PdfFormFieldType.Text => CreateTextFormControl(tab, page, field, bounds),
+                PdfFormFieldType.CheckBox => CreateBooleanFormControl(tab, page, field, bounds, isRadio: false),
+                PdfFormFieldType.RadioButton => CreateBooleanFormControl(tab, page, field, bounds, isRadio: true),
+                PdfFormFieldType.ComboBox => CreateComboFormControl(tab, page, field, bounds),
+                PdfFormFieldType.Signature => CreateSignatureFormControl(tab, page, field, bounds),
+                _ => null
+            };
+
+            if (control is null)
+            {
+                continue;
+            }
+
+            Canvas.SetLeft(control, bounds.X);
+            Canvas.SetTop(control, bounds.Y);
+            AnnotationOverlayCanvas.Children.Add(control);
+        }
+    }
+
+    private Control CreateTextFormControl(TabViewModel tab, PdfPage page, PdfFormField field, Avalonia.Rect bounds)
+    {
+        var textBox = new TextBox
+        {
+            Text = field.Value,
+            Width = Math.Max(32, bounds.Width),
+            Height = Math.Max(22, bounds.Height),
+            IsReadOnly = field.IsReadOnly,
+            Background = new SolidColorBrush(Color.Parse("#f8f8f8")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#4a90e2")),
+            BorderThickness = new Thickness(1)
+        };
+        textBox.LostFocus += async (_, _) =>
+        {
+            field.Value = textBox.Text ?? string.Empty;
+            await _pdfRenderService.ApplyFormFieldInputAsync(page, field, field.Value).ConfigureAwait(true);
+            tab.Document.MarkModified();
+        };
+        return textBox;
+    }
+
+    private Control CreateBooleanFormControl(TabViewModel tab, PdfPage page, PdfFormField field, Avalonia.Rect bounds, bool isRadio)
+    {
+        var checkBox = new CheckBox
+        {
+            IsChecked = field.IsChecked,
+            Width = Math.Max(18, bounds.Width),
+            Height = Math.Max(18, bounds.Height),
+            IsEnabled = !field.IsReadOnly,
+            Content = isRadio ? "○" : string.Empty
+        };
+        checkBox.Click += async (_, _) =>
+        {
+            field.IsChecked = checkBox.IsChecked == true;
+            await _pdfRenderService.ApplyFormFieldInputAsync(page, field, null, field.IsChecked).ConfigureAwait(true);
+            tab.Document.MarkModified();
+        };
+        return checkBox;
+    }
+
+    private Control CreateComboFormControl(TabViewModel tab, PdfPage page, PdfFormField field, Avalonia.Rect bounds)
+    {
+        var options = field.Options.Count > 0 ? field.Options : [field.Value];
+        var comboBox = new ComboBox
+        {
+            ItemsSource = options,
+            SelectedItem = string.IsNullOrWhiteSpace(field.Value) ? options.FirstOrDefault() : field.Value,
+            Width = Math.Max(56, bounds.Width),
+            Height = Math.Max(24, bounds.Height),
+            IsEnabled = !field.IsReadOnly
+        };
+        comboBox.SelectionChanged += async (_, _) =>
+        {
+            field.Value = comboBox.SelectedItem?.ToString() ?? string.Empty;
+            await _pdfRenderService.ApplyFormFieldInputAsync(page, field, field.Value).ConfigureAwait(true);
+            tab.Document.MarkModified();
+        };
+        return comboBox;
+    }
+
+    private Control CreateSignatureFormControl(TabViewModel tab, PdfPage page, PdfFormField field, Avalonia.Rect bounds)
+    {
+        var button = new Button
+        {
+            Width = Math.Max(120, bounds.Width),
+            Height = Math.Max(28, bounds.Height),
+            Content = string.IsNullOrWhiteSpace(field.Value) ? "署名を入力..." : FormatSignatureDisplay(field.Value),
+            IsEnabled = !field.IsReadOnly
+        };
+        button.Click += async (_, _) =>
+        {
+            var signature = await ShowSignatureInputDialogAsync().ConfigureAwait(true);
+            if (string.IsNullOrWhiteSpace(signature))
+            {
+                return;
+            }
+
+            field.Value = signature;
+            button.Content = FormatSignatureDisplay(signature);
+            await _pdfRenderService.ApplyFormFieldInputAsync(page, field, signature).ConfigureAwait(true);
+            tab.Document.MarkModified();
+        };
+        return button;
+    }
+
+    private static string FormatSignatureDisplay(string value)
+    {
+        return value.StartsWith("HAND:", StringComparison.Ordinal)
+            ? "手書き署名"
+            : value;
+    }
+
+    private async Task<string?> ShowSignatureInputDialogAsync()
+    {
+        var dialog = new Window
+        {
+            Width = 520,
+            Height = 360,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Title = "署名入力",
+            Background = new SolidColorBrush((Color)Application.Current!.FindResource("BgDark")!)
+        };
+
+        var strokes = new List<Point>();
+        var drawingLine = new Avalonia.Controls.Shapes.Polyline
+        {
+            Stroke = new SolidColorBrush(Color.Parse("#202020")),
+            StrokeThickness = 2
+        };
+        var drawingCanvas = new Canvas
+        {
+            Width = 460,
+            Height = 180,
+            Background = Brushes.White,
+            Children = { drawingLine }
+        };
+        var isDrawing = false;
+        drawingCanvas.PointerPressed += (_, e) =>
+        {
+            isDrawing = true;
+            strokes.Clear();
+            drawingLine.Points.Clear();
+            var point = e.GetPosition(drawingCanvas);
+            strokes.Add(point);
+            drawingLine.Points.Add(point);
+        };
+        drawingCanvas.PointerMoved += (_, e) =>
+        {
+            if (!isDrawing)
+            {
+                return;
+            }
+
+            var point = e.GetPosition(drawingCanvas);
+            strokes.Add(point);
+            drawingLine.Points.Add(point);
+        };
+        drawingCanvas.PointerReleased += (_, _) => isDrawing = false;
+
+        var fontComboBox = new ComboBox
+        {
+            ItemsSource = new[] { "Segoe UI", "Arial", "Times New Roman", "Courier New" },
+            SelectedIndex = 0,
+            Width = 180
+        };
+        var signatureTextBox = new TextBox
+        {
+            Width = 260,
+            Watermark = "署名テキストを入力"
+        };
+
+        var tabs = new TabControl
+        {
+            ItemsSource = new object[]
+            {
+                new TabItem
+                {
+                    Header = "手書き",
+                    Content = new StackPanel
+                    {
+                        Spacing = 8,
+                        Children =
+                        {
+                            new TextBlock { Text = "ポインターで署名してください", Foreground = new SolidColorBrush((Color)Application.Current.FindResource("TextPrimary")!) },
+                            drawingCanvas
+                        }
+                    }
+                },
+                new TabItem
+                {
+                    Header = "テキスト",
+                    Content = new StackPanel
+                    {
+                        Spacing = 8,
+                        Children =
+                        {
+                            new TextBlock { Text = "フォントを選択して入力", Foreground = new SolidColorBrush((Color)Application.Current.FindResource("TextPrimary")!) },
+                            fontComboBox,
+                            signatureTextBox
+                        }
+                    }
+                }
+            }
+        };
+
+        string? result = null;
+        var okButton = new Button { Content = "適用", Width = 88 };
+        var cancelButton = new Button { Content = "キャンセル", Width = 88 };
+        okButton.Click += (_, _) =>
+        {
+            if (tabs.SelectedIndex == 0)
+            {
+                result = strokes.Count > 1
+                    ? $"HAND:{string.Join(";", strokes.Select(point => $"{point.X:0.##},{point.Y:0.##}"))}"
+                    : null;
+            }
+            else
+            {
+                var text = signatureTextBox.Text?.Trim();
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    var font = fontComboBox.SelectedItem?.ToString() ?? "Segoe UI";
+                    result = $"{text} [{font}]";
+                }
+            }
+
+            dialog.Close();
+        };
+        cancelButton.Click += (_, _) => dialog.Close();
+
+        var buttonRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Spacing = 8,
+            Margin = new Thickness(0, 12, 0, 0),
+            Children = { cancelButton, okButton }
+        };
+        var layout = new Grid
+        {
+            RowDefinitions = new RowDefinitions("*,Auto"),
+            Margin = new Thickness(12)
+        };
+        Grid.SetRow(tabs, 0);
+        Grid.SetRow(buttonRow, 1);
+        layout.Children.Add(tabs);
+        layout.Children.Add(buttonRow);
+        dialog.Content = layout;
+        await dialog.ShowDialog(this).ConfigureAwait(true);
+        return result;
     }
 
     private void RebuildAnnotationPanel()
@@ -1319,6 +1599,10 @@ public partial class MainWindow : Window
         {
             _selectionPdfBoundsMap.Remove(key);
         }
+        foreach (var key in _formFieldMap.Keys.Where(key => ReferenceEquals(key.Tab, tab)).ToArray())
+        {
+            _formFieldMap.Remove(key);
+        }
         if (ReferenceEquals(_splitSecondaryTab, tab))
         {
             _splitSecondaryTab = null;
@@ -1764,6 +2048,11 @@ public partial class MainWindow : Window
 
     private void OnShapeTypeChanged(object? sender, SelectionChangedEventArgs e)
     {
+        if (ShapeTypeComboBox is null)
+        {
+            return;
+        }
+
         _activeShapeType = ShapeTypeComboBox.SelectedIndex switch
         {
             1 => ShapeType.Ellipse,
@@ -1775,6 +2064,11 @@ public partial class MainWindow : Window
 
     private void OnStrokeStyleChanged(object? sender, SelectionChangedEventArgs e)
     {
+        if (StrokeColorComboBox is null || FillColorComboBox is null || StrokeWidthComboBox is null)
+        {
+            return;
+        }
+
         _activeStrokeColorHex = StrokeColorComboBox.SelectedIndex switch
         {
             1 => "#00c878",
@@ -2093,6 +2387,11 @@ public partial class MainWindow : Window
         _ = RenderActiveTabAsync();
     }
 
+    private async void OnPrintClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        await ShowPrintDialogAsync().ConfigureAwait(true);
+    }
+
     private void OnSplitViewModeClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         if (_activeTab is null)
@@ -2269,6 +2568,13 @@ public partial class MainWindow : Window
         if ((e.KeyModifiers & KeyModifiers.Control) != 0 && e.Key == Key.C)
         {
             _ = CopySelectedTextAsync();
+            e.Handled = true;
+            return;
+        }
+
+        if ((e.KeyModifiers & KeyModifiers.Control) != 0 && e.Key == Key.P)
+        {
+            await ShowPrintDialogAsync().ConfigureAwait(true);
             e.Handled = true;
             return;
         }
@@ -2569,6 +2875,312 @@ public partial class MainWindow : Window
         dialog.Content = panel;
         await dialog.ShowDialog(this).ConfigureAwait(true);
         return result;
+    }
+
+    private async Task ShowPrintDialogAsync()
+    {
+        var tab = _activeTab;
+        if (tab is null || tab.PageCount <= 0)
+        {
+            return;
+        }
+
+        var options = tab.PrintOptions;
+        options.CurrentPage = tab.CurrentPage;
+        options.RangeStartPage = Math.Clamp(options.RangeStartPage, 1, tab.PageCount);
+        options.RangeEndPage = Math.Clamp(options.RangeEndPage, 1, tab.PageCount);
+
+        var dialog = new Window
+        {
+            Width = 780,
+            Height = 540,
+            CanResize = true,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Title = "印刷",
+            Background = new SolidColorBrush((Color)Application.Current!.FindResource("BgDark")!)
+        };
+
+        var allPagesRadio = new RadioButton { GroupName = "PrintRange", Content = "全ページ", IsChecked = options.RangeMode == PrintPageRangeMode.AllPages };
+        var currentPageRadio = new RadioButton { GroupName = "PrintRange", Content = $"現在ページ ({tab.CurrentPage})", IsChecked = options.RangeMode == PrintPageRangeMode.CurrentPage };
+        var rangeRadio = new RadioButton { GroupName = "PrintRange", Content = "範囲" };
+        var rangeTextBox = new TextBox
+        {
+            Width = 120,
+            Text = $"{options.RangeStartPage}-{options.RangeEndPage}",
+            IsEnabled = options.RangeMode == PrintPageRangeMode.PageRange
+        };
+        if (options.RangeMode == PrintPageRangeMode.PageRange)
+        {
+            rangeRadio.IsChecked = true;
+        }
+
+        var paperComboBox = new ComboBox
+        {
+            Width = 140,
+            ItemsSource = new[] { "A4", "A3", "Letter" },
+            SelectedItem = options.PaperSizeName
+        };
+        var orientationComboBox = new ComboBox
+        {
+            Width = 120,
+            ItemsSource = new[] { "縦", "横" },
+            SelectedIndex = options.IsLandscape ? 1 : 0
+        };
+        var copiesTextBox = new TextBox { Width = 64, Text = Math.Max(1, options.Copies).ToString(CultureInfo.InvariantCulture) };
+        var previewImage = new Image { Stretch = Stretch.Uniform, Width = 360, Height = 460 };
+
+        async Task UpdatePreviewAsync()
+        {
+            var mode = ResolvePrintRangeMode();
+            var pages = ResolvePageNumbers(tab, rangeTextBox.Text, mode);
+            if (pages.Count == 0)
+            {
+                previewImage.Source = null;
+                return;
+            }
+
+            using var previewBitmap = await _pdfRenderService.RenderPageForPrintAsync(tab.Document.Pages[pages[0] - 1], 150).ConfigureAwait(true);
+            previewImage.Source = ToBitmap(previewBitmap);
+        }
+
+        rangeRadio.Checked += (_, _) => rangeTextBox.IsEnabled = true;
+        allPagesRadio.Checked += async (_, _) =>
+        {
+            rangeTextBox.IsEnabled = false;
+            await UpdatePreviewAsync().ConfigureAwait(true);
+        };
+        currentPageRadio.Checked += async (_, _) =>
+        {
+            rangeTextBox.IsEnabled = false;
+            await UpdatePreviewAsync().ConfigureAwait(true);
+        };
+        rangeRadio.Checked += async (_, _) => await UpdatePreviewAsync().ConfigureAwait(true);
+        rangeTextBox.LostFocus += async (_, _) => await UpdatePreviewAsync().ConfigureAwait(true);
+
+        await UpdatePreviewAsync().ConfigureAwait(true);
+
+        var printRequested = false;
+        var printButton = new Button { Content = "印刷", Width = 88 };
+        var cancelButton = new Button { Content = "キャンセル", Width = 88 };
+        printButton.Click += (_, _) =>
+        {
+            printRequested = true;
+            dialog.Close();
+        };
+        cancelButton.Click += (_, _) => dialog.Close();
+
+        var rightPanel = new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                new TextBlock { Text = "ページ範囲", Foreground = new SolidColorBrush((Color)Application.Current.FindResource("TextPrimary")!) },
+                allPagesRadio,
+                currentPageRadio,
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 6,
+                    Children = { rangeRadio, rangeTextBox }
+                },
+                new Separator(),
+                new TextBlock { Text = "用紙", Foreground = new SolidColorBrush((Color)Application.Current.FindResource("TextPrimary")!) },
+                paperComboBox,
+                new TextBlock { Text = "向き", Foreground = new SolidColorBrush((Color)Application.Current.FindResource("TextPrimary")!) },
+                orientationComboBox,
+                new TextBlock { Text = "部数", Foreground = new SolidColorBrush((Color)Application.Current.FindResource("TextPrimary")!) },
+                copiesTextBox
+            }
+        };
+
+        var buttonPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Spacing = 8,
+            Children = { cancelButton, printButton }
+        };
+
+        var root = new DockPanel { LastChildFill = true, Margin = new Thickness(12) };
+        DockPanel.SetDock(buttonPanel, Dock.Bottom);
+        buttonPanel.Margin = new Thickness(0, 12, 0, 0);
+        root.Children.Add(buttonPanel);
+
+        var contentGrid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("2*,*"),
+            ColumnSpacing = 12
+        };
+        var previewBorder = new Border
+        {
+            BorderBrush = new SolidColorBrush((Color)Application.Current!.FindResource("BorderLight")!),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(8),
+            Child = previewImage
+        };
+        Grid.SetColumn(previewBorder, 0);
+        Grid.SetColumn(rightPanel, 1);
+        contentGrid.Children.Add(previewBorder);
+        contentGrid.Children.Add(rightPanel);
+        root.Children.Add(contentGrid);
+        dialog.Content = root;
+
+        await dialog.ShowDialog(this).ConfigureAwait(true);
+        if (!printRequested)
+        {
+            return;
+        }
+
+        var mode = ResolvePrintRangeMode();
+        var pages = ResolvePageNumbers(tab, rangeTextBox.Text, mode);
+        options.RangeMode = mode;
+        options.Copies = Math.Max(1, int.TryParse(copiesTextBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedCopies) ? parsedCopies : 1);
+        options.PaperSizeName = paperComboBox.SelectedItem?.ToString() ?? "A4";
+        options.IsLandscape = orientationComboBox.SelectedIndex == 1;
+        options.RangeStartPage = pages.Count > 0 ? pages.Min() : options.RangeStartPage;
+        options.RangeEndPage = pages.Count > 0 ? pages.Max() : options.RangeEndPage;
+
+        await PrintPagesAsync(tab, options, pages).ConfigureAwait(true);
+
+        PrintPageRangeMode ResolvePrintRangeMode()
+        {
+            if (currentPageRadio.IsChecked == true)
+            {
+                return PrintPageRangeMode.CurrentPage;
+            }
+
+            if (rangeRadio.IsChecked == true)
+            {
+                return PrintPageRangeMode.PageRange;
+            }
+
+            return PrintPageRangeMode.AllPages;
+        }
+    }
+
+    private static IReadOnlyList<int> ResolvePageNumbers(TabViewModel tab, string? rangeText, PrintPageRangeMode mode)
+    {
+        if (mode == PrintPageRangeMode.CurrentPage)
+        {
+            return [Math.Clamp(tab.CurrentPage, 1, tab.PageCount)];
+        }
+
+        if (mode != PrintPageRangeMode.PageRange)
+        {
+            return tab.PrintOptions.ResolvePageNumbers(tab.PageCount);
+        }
+
+        var text = rangeText?.Trim();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return [Math.Clamp(tab.CurrentPage, 1, tab.PageCount)];
+        }
+
+        var parts = text.Split('-', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2 ||
+            !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var start) ||
+            !int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var end))
+        {
+            return [Math.Clamp(tab.CurrentPage, 1, tab.PageCount)];
+        }
+
+        tab.PrintOptions.RangeStartPage = start;
+        tab.PrintOptions.RangeEndPage = end;
+        tab.PrintOptions.RangeMode = PrintPageRangeMode.PageRange;
+        return tab.ResolvePrintPages();
+    }
+
+    private async Task PrintPagesAsync(TabViewModel tab, PrintOptions options, IReadOnlyList<int> pageNumbers)
+    {
+        if (pageNumbers.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            if (OperatingSystem.IsLinux())
+            {
+                var tempFiles = new List<string>();
+                try
+                {
+                    foreach (var pageNumber in pageNumbers)
+                    {
+                        using var bitmap = await _pdfRenderService.RenderPageForPrintAsync(tab.Document.Pages[pageNumber - 1], 300).ConfigureAwait(true);
+                        var tempPath = Path.Combine(Path.GetTempPath(), $"acropdf-print-{Guid.NewGuid():N}-{pageNumber}.png");
+                        using var image = SKImage.FromBitmap(bitmap);
+                        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+                        await using var output = File.Create(tempPath);
+                        data.SaveTo(output);
+                        tempFiles.Add(tempPath);
+                    }
+
+                    var psi = new ProcessStartInfo("lp")
+                    {
+                        UseShellExecute = false
+                    };
+                    psi.ArgumentList.Add("-n");
+                    psi.ArgumentList.Add(Math.Max(1, options.Copies).ToString(CultureInfo.InvariantCulture));
+                    psi.ArgumentList.Add("-o");
+                    psi.ArgumentList.Add($"media={SanitizePaperSize(options.PaperSizeName)}");
+                    if (options.IsLandscape)
+                    {
+                        psi.ArgumentList.Add("-o");
+                        psi.ArgumentList.Add("landscape");
+                    }
+
+                    psi.ArgumentList.Add("-o");
+                    psi.ArgumentList.Add($"page-ranges={string.Join(",", pageNumbers)}");
+                    foreach (var tempFile in tempFiles)
+                    {
+                        psi.ArgumentList.Add(tempFile);
+                    }
+
+                    using var process = Process.Start(psi);
+                    process?.WaitForExit(5000);
+                }
+                finally
+                {
+                    foreach (var tempFile in tempFiles)
+                    {
+                        if (File.Exists(tempFile))
+                        {
+                            File.Delete(tempFile);
+                        }
+                    }
+                }
+            }
+            else if (OperatingSystem.IsWindows())
+            {
+                using var process = Process.Start(new ProcessStartInfo
+                {
+                    FileName = tab.Document.FilePath,
+                    Verb = "print",
+                    UseShellExecute = true
+                });
+                process?.WaitForExit(3000);
+            }
+        }
+        catch (Exception ex)
+        {
+            Trace.TraceError($"Print request failed: {ex}");
+        }
+    }
+
+    private static string SanitizePaperSize(string? value)
+    {
+        var safe = new string((value ?? string.Empty)
+            .Where(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_')
+            .ToArray());
+        return string.IsNullOrWhiteSpace(safe) ? "A4" : safe;
+    }
+
+    private static Bitmap ToBitmap(SKBitmap bitmap)
+    {
+        using var image = SKImage.FromBitmap(bitmap);
+        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+        var stream = new MemoryStream(data.ToArray(), writable: false);
+        return new Bitmap(stream);
     }
 
     private void SaveSessionSettings()
