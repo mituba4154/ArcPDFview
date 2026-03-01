@@ -1,4 +1,6 @@
-# ArcPFDview — 完全仕様書
+# ArcPDFview — 完全仕様書
+
+> 正式名称: **ArcPDFview** / コードネーム: **AcroPDF**
 
 > バージョン: 1.0.0  
 > 作成日: 2026-03-01  
