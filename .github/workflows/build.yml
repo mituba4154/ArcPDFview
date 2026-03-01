@@ -1,5 +1,5 @@
 name: Build & Test
-# push または PR のたびに自動実行
+
 on:
   push:
     branches: [ main, develop ]
@@ -8,7 +8,6 @@ on:
 
 jobs:
   build:
-    # Windows と Linux の両方でビルド + スモーク実行
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest]
@@ -16,28 +15,29 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      # リポジトリをチェックアウト
       - name: Checkout
         uses: actions/checkout@v4
 
-      # .NET 8 SDK をセットアップ
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
-      # 依存パッケージを復元
+      # Linux のみ: Avalonia に必要な依存ライブラリと xvfb を追加
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libx11-dev libice-dev libsm-dev libfontconfig1 libglib2.0-dev libnss3
+
       - name: Restore
         run: dotnet restore
 
-      # ビルド
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
-      # テスト実行
       - name: Test
         run: dotnet test --no-build --configuration Release --verbosity normal
-
 
       - name: Smoke test (Linux)
         if: runner.os == 'Linux'
@@ -57,3 +57,39 @@ jobs:
             exit $process.ExitCode
           }
 
+  package:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+          - os: ubuntu-latest
+            rid: linux-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libice-dev libsm-dev libfontconfig1 libglib2.0-dev libnss3
+
+      - name: Publish
+        run: dotnet publish src/AcroPDF.App/AcroPDF.App.csproj -c Release -r ${{ matrix.rid }} --self-contained -o ./publish/${{ matrix.rid }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ArcPDFview-${{ matrix.rid }}
+          path: ./publish/${{ matrix.rid }}
