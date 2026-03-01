@@ -1,6 +1,8 @@
 #nullable enable
 
 using System.Collections.Concurrent;
+using System.Buffers;
+using System.Diagnostics;
 using System.Threading;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -37,10 +39,16 @@ public sealed class PdfiumRenderService : IPdfRenderService
     private static readonly AsyncLocal<FileStream?> SaveStreamContext = new();
     private static bool _libraryInitialized;
 
-    private readonly ConcurrentDictionary<string, SKBitmap> _pageCache = new();
+    // Phase 5 要件: ページキャッシュは最大 10 エントリの LRU とする。
+    private const int MaxPageCacheEntries = 10;
+    private readonly object _cacheLock = new();
+    private readonly Dictionary<string, LinkedListNode<CacheEntry>> _pageCache = new(StringComparer.Ordinal);
+    private readonly LinkedList<CacheEntry> _pageCacheLru = new();
     private readonly ConcurrentDictionary<IntPtr, byte> _openDocuments = new();
     private readonly ConcurrentDictionary<IntPtr, IntPtr> _formHandles = new();
     private readonly ConcurrentDictionary<int, TimerRegistration> _formTimers = new();
+    private readonly ConcurrentDictionary<IntPtr, DocumentLoadContext> _documentLoadContexts = new();
+    private readonly ConcurrentDictionary<IntPtr, byte> _memoryMeasuredDocuments = new();
     // Unmanaged FPDF_FORMFILLINFO.Release で使用するため、GC 回収されないようインスタンスで保持する。
     private readonly ReleaseCallback _releaseCallback;
     private readonly WriteBlockCallback _saveCallback;
@@ -60,7 +68,6 @@ public sealed class PdfiumRenderService : IPdfRenderService
         _setTimerCallback = OnSetFormTimer;
         _killTimerCallback = OnKillFormTimer;
         _getLocalTimeCallback = OnGetFormLocalTime;
-        EnsureLibraryInitialized();
     }
 
     /// <summary>
@@ -80,16 +87,20 @@ public sealed class PdfiumRenderService : IPdfRenderService
 
         return Task.Run(() =>
         {
+            EnsureLibraryInitialized();
             ct.ThrowIfCancellationRequested();
+            var stopwatch = Stopwatch.StartNew();
 
             if (!File.Exists(filePath))
             {
                 throw new FileNotFoundException("PDF file not found.", filePath);
             }
 
-            var documentHandle = NativeMethods.FPDF_LoadDocument(filePath, password);
+            var loadContext = new DocumentLoadContext(filePath);
+            var documentHandle = NativeMethods.FPDF_LoadCustomDocument(ref loadContext.AccessInfo, password);
             if (documentHandle == IntPtr.Zero)
             {
+                loadContext.Dispose();
                 var error = NativeMethods.FPDF_GetLastError();
                 if (error == PdfErrorPassword)
                 {
@@ -100,6 +111,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
             }
 
             _openDocuments.TryAdd(documentHandle, 0);
+            _documentLoadContexts.TryAdd(documentHandle, loadContext);
 
             var pageCount = NativeMethods.FPDF_GetPageCount(documentHandle);
             if (pageCount < 0)
@@ -135,7 +147,16 @@ public sealed class PdfiumRenderService : IPdfRenderService
                 pages.Add(new PdfPage(documentHandle, pageIndex, widthPt, heightPt));
             }
 
-            return new PdfDocument(filePath, documentHandle, pages, CloseNativeDocument);
+            var document = new PdfDocument(filePath, documentHandle, pages, CloseNativeDocument);
+            stopwatch.Stop();
+            Trace.TraceInformation($"PDF open: {Path.GetFileName(filePath)} pages={pageCount} elapsed={stopwatch.ElapsedMilliseconds}ms");
+            if (pageCount >= 100)
+            {
+                var memoryMb = GC.GetTotalMemory(false) / (1024d * 1024d);
+                Trace.TraceInformation($"Memory baseline after open (>=100 pages): {memoryMb:F1} MB");
+            }
+
+            return document;
         }, ct);
     }
 
@@ -146,11 +167,20 @@ public sealed class PdfiumRenderService : IPdfRenderService
 
         return Task.Run(() =>
         {
+            EnsureLibraryInitialized();
             ct.ThrowIfCancellationRequested();
 
             var normalizedZoom = ClampZoomLevel(zoomLevel);
             var renderDpi = 96d * normalizedZoom;
-            return RenderPageInternal(page, renderDpi, useCache: true);
+            var rendered = RenderPageInternal(page, renderDpi, useCache: true);
+            if (page.PageIndex >= 99 && _memoryMeasuredDocuments.TryAdd(page.DocumentHandle, 0))
+            {
+                var memoryMb = GC.GetTotalMemory(false) / (1024d * 1024d);
+                Trace.TraceInformation($"Memory after rendering page {page.PageNumber}: {memoryMb:F1} MB");
+            }
+
+            QueueAdjacentPrefetch(page, normalizedZoom);
+            return rendered;
         }, ct);
     }
 
@@ -706,17 +736,19 @@ public sealed class PdfiumRenderService : IPdfRenderService
             DestroyFormHandle(documentHandle);
         }
 
-        foreach (var cacheEntry in _pageCache)
-        {
-            cacheEntry.Value.Dispose();
-        }
-
         foreach (var timerId in _formTimers.Keys.ToArray())
         {
             StopFormTimer(timerId);
         }
 
-        _pageCache.Clear();
+        ClearCache();
+
+        foreach (var context in _documentLoadContexts.Values)
+        {
+            context.Dispose();
+        }
+
+        _documentLoadContexts.Clear();
     }
 
     private SKBitmap RenderPageInternal(PdfPage page, double dpi, bool useCache)
@@ -726,9 +758,9 @@ public sealed class PdfiumRenderService : IPdfRenderService
         var roundedDpi = Math.Round(dpi, 1);
         var cacheKey = $"{page.DocumentHandle}:{page.PageIndex}:{roundedDpi}";
 
-        if (useCache && _pageCache.TryGetValue(cacheKey, out var cachedBitmap))
+        if (useCache && TryGetCachedBitmapCopy(cacheKey, out var cachedBitmap))
         {
-            return cachedBitmap.Copy();
+            return cachedBitmap;
         }
 
         var pageHandle = NativeMethods.FPDF_LoadPage(page.DocumentHandle, page.PageIndex);
@@ -779,13 +811,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
 
             if (useCache)
             {
-                if (_pageCache.TryAdd(cacheKey, renderedBitmap))
-                {
-                    return renderedBitmap.Copy();
-                }
-
-                renderedBitmap.Dispose();
-                return _pageCache[cacheKey].Copy();
+                return AddToCacheAndCopy(cacheKey, page.DocumentHandle, renderedBitmap);
             }
 
             return renderedBitmap;
@@ -799,6 +825,69 @@ public sealed class PdfiumRenderService : IPdfRenderService
 
             NativeMethods.FPDF_ClosePage(pageHandle);
         }
+    }
+
+    private void QueueAdjacentPrefetch(PdfPage centerPage, double zoomLevel)
+    {
+        var documentHandle = centerPage.DocumentHandle;
+        var pageCount = NativeMethods.FPDF_GetPageCount(documentHandle);
+        if (pageCount <= 1)
+        {
+            return;
+        }
+
+        _ = Task.Run(() =>
+        {
+            var renderDpi = 96d * zoomLevel;
+            foreach (var pageIndex in new[] { centerPage.PageIndex - 1, centerPage.PageIndex + 1 })
+            {
+                if (pageIndex < 0 || pageIndex >= pageCount)
+                {
+                    continue;
+                }
+
+                var cacheKey = $"{documentHandle}:{pageIndex}:{Math.Round(renderDpi, 1)}";
+                if (IsCached(cacheKey))
+                {
+                    continue;
+                }
+
+                if (!TryCreatePage(documentHandle, pageIndex, out var page))
+                {
+                    continue;
+                }
+
+                using var _ = RenderPageInternal(page, renderDpi, useCache: true);
+            }
+        });
+    }
+
+    private static bool TryCreatePage(IntPtr documentHandle, int pageIndex, out PdfPage page)
+    {
+        page = default!;
+        var widthPt = 0d;
+        var heightPt = 0d;
+        if (NativeMethods.FPDF_GetPageSizeByIndexF(documentHandle, pageIndex, out var pageSize) != 0)
+        {
+            widthPt = pageSize.Width;
+            heightPt = pageSize.Height;
+        }
+
+        if (widthPt <= 0d || heightPt <= 0d)
+        {
+            var pageHandle = NativeMethods.FPDF_LoadPage(documentHandle, pageIndex);
+            if (pageHandle == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            widthPt = NativeMethods.FPDF_GetPageWidthF(pageHandle);
+            heightPt = NativeMethods.FPDF_GetPageHeightF(pageHandle);
+            NativeMethods.FPDF_ClosePage(pageHandle);
+        }
+
+        page = new PdfPage(documentHandle, pageIndex, widthPt, heightPt);
+        return true;
     }
 
     private IntPtr GetOrCreateFormHandle(IntPtr documentHandle)
@@ -1112,22 +1201,100 @@ public sealed class PdfiumRenderService : IPdfRenderService
             DestroyFormHandle(handle);
             NativeMethods.FPDF_CloseDocument(handle);
             RemoveCacheForDocument(handle);
+            _memoryMeasuredDocuments.TryRemove(handle, out _);
+            if (_documentLoadContexts.TryRemove(handle, out var context))
+            {
+                context.Dispose();
+            }
         }
     }
 
     private void RemoveCacheForDocument(IntPtr handle)
     {
-        var cacheKeyPrefix = $"{handle}:";
-        var matchedKeys = _pageCache.Keys
-            .Where(key => key.StartsWith(cacheKeyPrefix, StringComparison.Ordinal))
-            .ToArray();
-
-        foreach (var key in matchedKeys)
+        lock (_cacheLock)
         {
-            if (_pageCache.TryRemove(key, out var bitmap))
+            var node = _pageCacheLru.First;
+            while (node is not null)
             {
-                bitmap.Dispose();
+                var next = node.Next;
+                if (node.Value.DocumentHandle == handle)
+                {
+                    _pageCacheLru.Remove(node);
+                    _pageCache.Remove(node.Value.Key);
+                    node.Value.Bitmap.Dispose();
+                }
+
+                node = next;
             }
+        }
+    }
+
+    private bool IsCached(string cacheKey)
+    {
+        lock (_cacheLock)
+        {
+            return _pageCache.ContainsKey(cacheKey);
+        }
+    }
+
+    private bool TryGetCachedBitmapCopy(string cacheKey, out SKBitmap bitmap)
+    {
+        lock (_cacheLock)
+        {
+            if (_pageCache.TryGetValue(cacheKey, out var node))
+            {
+                _pageCacheLru.Remove(node);
+                _pageCacheLru.AddFirst(node);
+                bitmap = node.Value.Bitmap.Copy();
+                return true;
+            }
+        }
+
+        bitmap = null!;
+        return false;
+    }
+
+    private SKBitmap AddToCacheAndCopy(string cacheKey, IntPtr documentHandle, SKBitmap bitmap)
+    {
+        lock (_cacheLock)
+        {
+            if (_pageCache.TryGetValue(cacheKey, out var existing))
+            {
+                existing.Value.Bitmap.Dispose();
+                existing.Value = existing.Value with { Bitmap = bitmap };
+                _pageCacheLru.Remove(existing);
+                _pageCacheLru.AddFirst(existing);
+                return existing.Value.Bitmap.Copy();
+            }
+
+            var node = new LinkedListNode<CacheEntry>(new CacheEntry(cacheKey, bitmap, documentHandle));
+            _pageCacheLru.AddFirst(node);
+            _pageCache[cacheKey] = node;
+
+            while (_pageCache.Count > MaxPageCacheEntries && _pageCacheLru.Last is { } last)
+            {
+                _pageCacheLru.RemoveLast();
+                _pageCache.Remove(last.Value.Key);
+                last.Value.Bitmap.Dispose();
+            }
+
+            return bitmap.Copy();
+        }
+    }
+
+    private void ClearCache()
+    {
+        lock (_cacheLock)
+        {
+            var node = _pageCacheLru.First;
+            while (node is not null)
+            {
+                node.Value.Bitmap.Dispose();
+                node = node.Next;
+            }
+
+            _pageCacheLru.Clear();
+            _pageCache.Clear();
         }
     }
 
@@ -1161,6 +1328,9 @@ public sealed class PdfiumRenderService : IPdfRenderService
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
         public static extern IntPtr FPDF_LoadDocument([MarshalAs(UnmanagedType.LPUTF8Str)] string file_path, [MarshalAs(UnmanagedType.LPUTF8Str)] string? password);
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr FPDF_LoadCustomDocument(ref FPDF_FILEACCESS fileAccess, [MarshalAs(UnmanagedType.LPUTF8Str)] string? password);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
         public static extern IntPtr FPDF_CreateNewDocument();
@@ -1284,6 +1454,14 @@ public sealed class PdfiumRenderService : IPdfRenderService
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    private struct FPDF_FILEACCESS
+    {
+        public uint m_FileLen;
+        public IntPtr m_GetBlock;
+        public IntPtr m_Param;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     private readonly struct FS_SIZEF
     {
         public readonly float Width;
@@ -1362,7 +1540,93 @@ public sealed class PdfiumRenderService : IPdfRenderService
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate void FormFillTimerProcCallback(int timerId);
 
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate int GetBlockCallback(IntPtr param, uint position, IntPtr buffer, uint size);
+
     private readonly record struct TimerRegistration(System.Threading.Timer Timer);
+
+    private readonly record struct CacheEntry(string Key, SKBitmap Bitmap, IntPtr DocumentHandle);
+
+    private sealed class DocumentLoadContext : IDisposable
+    {
+        private readonly FileStream _stream;
+        private readonly object _sync = new();
+        private readonly GCHandle _selfHandle;
+        private bool _disposed;
+
+        public DocumentLoadContext(string filePath)
+        {
+            _stream = new FileStream(filePath, FileMode.Open, System.IO.FileAccess.Read, FileShare.Read);
+            if (_stream.Length > uint.MaxValue)
+            {
+                throw new InvalidOperationException("PDF larger than 4GB is not supported by the current PDFium custom stream bridge.");
+            }
+
+            GetBlock = ReadBlock;
+            _selfHandle = GCHandle.Alloc(this, GCHandleType.Normal);
+            AccessInfo = new FPDF_FILEACCESS
+            {
+                m_FileLen = checked((uint)_stream.Length),
+                m_GetBlock = Marshal.GetFunctionPointerForDelegate(GetBlock),
+                m_Param = GCHandle.ToIntPtr(_selfHandle)
+            };
+        }
+
+        public FPDF_FILEACCESS AccessInfo;
+
+        public GetBlockCallback GetBlock { get; }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            _stream.Dispose();
+            if (_selfHandle.IsAllocated)
+            {
+                _selfHandle.Free();
+            }
+        }
+
+        private int ReadBlock(IntPtr param, uint position, IntPtr buffer, uint size)
+        {
+            if (_disposed || size == 0)
+            {
+                return 0;
+            }
+
+            var endPosition = checked((long)position + size);
+            if (endPosition > _stream.Length)
+            {
+                return 0;
+            }
+
+            var sizeInt = checked((int)size);
+            var bytes = ArrayPool<byte>.Shared.Rent(sizeInt);
+            try
+            {
+                lock (_sync)
+                {
+                    _stream.Position = position;
+                    var read = _stream.Read(bytes, 0, sizeInt);
+                    if (read != sizeInt)
+                    {
+                        return 0;
+                    }
+                }
+
+                Marshal.Copy(bytes, 0, buffer, sizeInt);
+                return 1;
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(bytes);
+            }
+        }
+    }
 }
 
 /// <summary>
