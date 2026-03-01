@@ -172,25 +172,25 @@ Avalonia のテーマ:
 | 1-8 | 指定 DPI でページを `SKBitmap` にレンダリング | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/PdfiumRenderService.cs` |
 | 1-9 | ページキャッシュの実装 | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/PdfiumRenderService.cs` |
 | 1-10 | ズーム機能（25%〜400%） | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/PdfiumRenderService.cs`、`src/AcroPDF.App/Controls/PdfPageControl.cs` |
-| 1-11 | Ctrl+スクロールでズーム | ⬜ | |
-| 1-12 | 幅/ページ/実寸に合わせる | ⬜ | |
-| 1-13 | ツールバーのナビゲーションボタン | ⬜ | |
-| 1-14 | ページ番号入力ジャンプ | ⬜ | |
-| 1-15 | キーボードショートカット (← →) | ⬜ | |
-| 1-16 | 連続スクロールモード | ⬜ | 仮想化は Phase 5 でよい |
-| 1-17 | 単ページモード | ⬜ | |
-| 1-18 | `TabViewModel` の実装 | ⬜ | |
-| 1-19 | タブバー UI | ⬜ | wireframe を参照 |
-| 1-20 | 「+」ボタンでファイルを開く | ⬜ | |
-| 1-21 | タブ右クリックメニュー | ⬜ | |
-| 1-22 | Ctrl+W でタブを閉じる | ⬜ | |
-| 1-23 | 最後のタブを閉じても終了しない | ⬜ | |
-| 1-24 | サムネイルパネルの基本 UI | ⬜ | |
-| 1-25 | 非同期サムネイル生成 | ⬜ | `SemaphoreSlim` で 4 並列上限 |
-| 1-26 | サムネイルクリックでジャンプ | ⬜ | |
-| 1-27 | 現在ページのサムネイルをハイライト | ⬜ | |
-| 1-28 | ステータスバーの基本表示 | ⬜ | |
-| 1-29 | マウス座標の表示 | ⬜ | |
+| 1-11 | Ctrl+スクロールでズーム | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 1-12 | 幅/ページ/実寸に合わせる | ✅ | 2026-03-01 完了。`src/AcroPDF.ViewModels/TabViewModel.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 1-13 | ツールバーのナビゲーションボタン | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 1-14 | ページ番号入力ジャンプ | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 1-15 | キーボードショートカット (← →) | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 1-16 | 連続スクロールモード | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 1-17 | 単ページモード | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 1-18 | `TabViewModel` の実装 | ✅ | 2026-03-01 完了。`src/AcroPDF.ViewModels/TabViewModel.cs` |
+| 1-19 | タブバー UI | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 1-20 | 「+」ボタンでファイルを開く | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 1-21 | タブ右クリックメニュー | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 1-22 | Ctrl+W でタブを閉じる | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 1-23 | 最後のタブを閉じても終了しない | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 1-24 | サムネイルパネルの基本 UI | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 1-25 | 非同期サムネイル生成 | ✅ | 2026-03-01 完了。`src/AcroPDF.ViewModels/TabViewModel.cs` |
+| 1-26 | サムネイルクリックでジャンプ | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 1-27 | 現在ページのサムネイルをハイライト | ✅ | 2026-03-01 完了。`src/AcroPDF.ViewModels/TabViewModel.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 1-28 | ステータスバーの基本表示 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 1-29 | マウス座標の表示 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
 
 **Phase 1 完了チェックリスト:**
 - [ ] PDF を開いて全ページ表示できる

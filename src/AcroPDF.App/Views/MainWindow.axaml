@@ -5,14 +5,191 @@
         Title="AcroPDF"
         Width="1280"
         Height="800"
+        MinWidth="900"
+        MinHeight="600"
         Background="{DynamicResource BgDark}"
-        DragDrop.AllowDrop="True">
-  <Grid RowDefinitions="Auto,*">
-    <TextBlock Margin="12"
-               Foreground="{DynamicResource TextSecondary}"
-               Text="PDF をドラッグ&amp;ドロップするか、起動引数で指定してください。" />
-    <controls:PdfPageControl x:Name="PageControl"
-                             Grid.Row="1"
-                             Margin="12" />
+        DragDrop.AllowDrop="True"
+        KeyDown="OnWindowKeyDown"
+        PointerWheelChanged="OnWindowPointerWheelChanged">
+  <Grid RowDefinitions="36,40,*,22">
+    <Border Grid.Row="0"
+            Background="{DynamicResource BgDarkBrush}"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="0,0,0,1">
+      <DockPanel>
+        <Button x:Name="AddTabButton"
+                DockPanel.Dock="Right"
+                Width="32"
+                Margin="4"
+                Background="Transparent"
+                BorderThickness="0"
+                Foreground="{DynamicResource TextPrimaryBrush}"
+                Content="+"
+                Click="OnAddTabClicked" />
+        <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Disabled">
+          <StackPanel x:Name="TabHost"
+                      Orientation="Horizontal"
+                      Margin="6,4" />
+        </ScrollViewer>
+      </DockPanel>
+    </Border>
+
+    <Border Grid.Row="1"
+            Background="{DynamicResource BgToolbarBrush}"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="0,0,0,1">
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto"
+            Margin="8,4">
+        <StackPanel Orientation="Horizontal"
+                    Spacing="4">
+          <Button x:Name="OpenFileButton"
+                  Content="開く"
+                  Padding="10,2"
+                  Click="OnOpenFileClicked" />
+        </StackPanel>
+
+        <StackPanel Grid.Column="1"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Center"
+                    Spacing="4">
+          <Button Content="⟨⟨"
+                  Width="30"
+                  Click="OnFirstPageClicked" />
+          <Button Content="⟨"
+                  Width="30"
+                  Click="OnPreviousPageClicked" />
+          <TextBox x:Name="PageNumberTextBox"
+                   Width="56"
+                   HorizontalContentAlignment="Center"
+                   VerticalContentAlignment="Center"
+                   KeyDown="OnPageNumberTextBoxKeyDown" />
+          <TextBlock x:Name="TotalPageTextBlock"
+                     VerticalAlignment="Center"
+                     Foreground="{DynamicResource TextPrimaryBrush}"
+                     Text="/ 0" />
+          <Button Content="⟩"
+                  Width="30"
+                  Click="OnNextPageClicked" />
+          <Button Content="⟩⟩"
+                  Width="30"
+                  Click="OnLastPageClicked" />
+        </StackPanel>
+
+        <StackPanel Grid.Column="2"
+                    Orientation="Horizontal"
+                    Spacing="4">
+          <Button Content="−"
+                  Width="30"
+                  Click="OnZoomOutClicked" />
+          <ComboBox x:Name="ZoomComboBox"
+                    Width="140"
+                    SelectionChanged="OnZoomComboBoxSelectionChanged">
+            <ComboBoxItem Content="25%" />
+            <ComboBoxItem Content="50%" />
+            <ComboBoxItem Content="75%" />
+            <ComboBoxItem Content="100%" />
+            <ComboBoxItem Content="125%" />
+            <ComboBoxItem Content="150%" />
+            <ComboBoxItem Content="200%" />
+            <ComboBoxItem Content="300%" />
+            <ComboBoxItem Content="400%" />
+            <ComboBoxItem Content="幅に合わせる" />
+            <ComboBoxItem Content="ページに合わせる" />
+            <ComboBoxItem Content="実寸" />
+          </ComboBox>
+          <Button Content="+"
+                  Width="30"
+                  Click="OnZoomInClicked" />
+        </StackPanel>
+
+        <StackPanel Grid.Column="3"
+                    Orientation="Horizontal"
+                    Margin="8,0,0,0"
+                    Spacing="4">
+          <ToggleButton x:Name="SinglePageModeButton"
+                        Content="▣ 単ページ"
+                        Click="OnSinglePageModeClicked" />
+          <ToggleButton x:Name="ContinuousModeButton"
+                        Content="⊟ 連続"
+                        Click="OnContinuousModeClicked" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="2"
+          ColumnDefinitions="220,*"
+          Background="{DynamicResource BgDarkBrush}">
+      <Border Grid.Column="0"
+              Background="{DynamicResource BgPanelBrush}"
+              BorderBrush="{DynamicResource BorderBrush}"
+              BorderThickness="0,0,1,0">
+        <ScrollViewer x:Name="ThumbnailScrollViewer"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+          <StackPanel x:Name="ThumbnailPanel"
+                      Margin="8"
+                      Spacing="8" />
+        </ScrollViewer>
+      </Border>
+
+      <Grid Grid.Column="1">
+        <TextBlock x:Name="EmptyStateTextBlock"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   Foreground="{DynamicResource TextSecondaryBrush}"
+                   Text="PDF をドラッグ&amp;ドロップするか、[開く] ボタンから選択してください。" />
+        <ScrollViewer x:Name="SinglePageScrollViewer"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto">
+          <controls:PdfPageControl x:Name="PageControl"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Top"
+                                   Margin="16"
+                                   PointerMoved="OnSinglePagePointerMoved" />
+        </ScrollViewer>
+        <ScrollViewer x:Name="ContinuousScrollViewer"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto"
+                      IsVisible="False">
+          <StackPanel x:Name="ContinuousPagePanel"
+                      Margin="16"
+                      Spacing="16"
+                      HorizontalAlignment="Center" />
+        </ScrollViewer>
+      </Grid>
+    </Grid>
+
+    <Border Grid.Row="3"
+            Background="{DynamicResource BgDarkBrush}"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="0,1,0,0">
+      <Grid Margin="8,2"
+            ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*">
+        <TextBlock x:Name="ReadyStatusTextBlock"
+                   Foreground="{DynamicResource AccentBrush}"
+                   Text="● 準備完了" />
+        <TextBlock x:Name="FileStatusTextBlock"
+                   Grid.Column="1"
+                   Margin="12,0,0,0"
+                   Foreground="{DynamicResource TextPrimaryBrush}" />
+        <TextBlock x:Name="PageStatusTextBlock"
+                   Grid.Column="2"
+                   Margin="12,0,0,0"
+                   Foreground="{DynamicResource TextPrimaryBrush}" />
+        <TextBlock x:Name="ZoomStatusTextBlock"
+                   Grid.Column="3"
+                   Margin="12,0,0,0"
+                   Foreground="{DynamicResource TextPrimaryBrush}" />
+        <TextBlock x:Name="MouseStatusTextBlock"
+                   Grid.Column="4"
+                   Margin="12,0,0,0"
+                   Foreground="{DynamicResource TextPrimaryBrush}" />
+        <TextBlock x:Name="PlatformStatusTextBlock"
+                   Grid.Column="5"
+                   HorizontalAlignment="Right"
+                   Foreground="{DynamicResource TextDimBrush}" />
+      </Grid>
+    </Border>
   </Grid>
 </Window>
