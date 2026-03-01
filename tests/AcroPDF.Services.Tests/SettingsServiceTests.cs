@@ -41,6 +41,25 @@ public sealed class SettingsServiceTests
         Assert.Contains("sample-24.pdf", recent[0], StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void SaveSession_AndLoadSession_RoundTripsEntries()
+    {
+        using var scope = new SettingsEnvironmentScope();
+        var service = new SettingsService();
+        var session = new[]
+        {
+            new SessionEntry("/tmp/a.pdf", 2),
+            new SessionEntry("/tmp/b.pdf", 5)
+        };
+
+        service.SaveSession(session);
+        var loaded = service.LoadSession();
+
+        Assert.Equal(2, loaded.Count);
+        Assert.Equal("/tmp/a.pdf", loaded[0].FilePath);
+        Assert.Equal(5, loaded[1].PageNumber);
+    }
+
     private sealed class SettingsEnvironmentScope : IDisposable
     {
         private readonly string? _oldAppData = Environment.GetEnvironmentVariable("APPDATA");

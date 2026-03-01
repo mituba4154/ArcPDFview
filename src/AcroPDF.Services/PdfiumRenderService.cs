@@ -15,6 +15,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
 {
     private const uint PdfErrorPassword = 4;
     private const int RenderFlags = 0x01;
+    private const int TwoPageSpacingPx = 16;
 
     private static readonly object InitLock = new();
     private static bool _libraryInitialized;
@@ -181,6 +182,54 @@ public sealed class PdfiumRenderService : IPdfRenderService
     }
 
     /// <inheritdoc />
+    public async Task<SKBitmap?> RenderCompositePageAsync(
+        PdfDocument document,
+        int currentPage,
+        double zoomLevel,
+        bool twoPageMode,
+        int rotationDegrees,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        if (currentPage <= 0 || currentPage > document.PageCount)
+        {
+            return null;
+        }
+
+        var page = document.Pages[currentPage - 1];
+        var bitmap = await RenderPageAsync(page, zoomLevel, ct).ConfigureAwait(false);
+        try
+        {
+            if (twoPageMode && currentPage < document.PageCount)
+            {
+                var secondPage = document.Pages[currentPage];
+                using var second = await RenderPageAsync(secondPage, zoomLevel, ct).ConfigureAwait(false);
+                var merged = new SKBitmap(bitmap.Width + second.Width + TwoPageSpacingPx, Math.Max(bitmap.Height, second.Height), SKColorType.Bgra8888, SKAlphaType.Premul);
+                using var canvas = new SKCanvas(merged);
+                canvas.Clear(SKColors.Transparent);
+                canvas.DrawBitmap(bitmap, 0, 0);
+                canvas.DrawBitmap(second, bitmap.Width + TwoPageSpacingPx, 0);
+                bitmap.Dispose();
+                bitmap = merged;
+            }
+
+            if (rotationDegrees == 0)
+            {
+                return bitmap;
+            }
+
+            var rotated = RotateBitmap(bitmap, rotationDegrees);
+            bitmap.Dispose();
+            return rotated;
+        }
+        catch
+        {
+            bitmap.Dispose();
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
     public void Close(PdfDocument document)
     {
         document.Dispose();
@@ -257,6 +306,27 @@ public sealed class PdfiumRenderService : IPdfRenderService
         }
     }
 
+    private static SKBitmap RotateBitmap(SKBitmap source, int degrees)
+    {
+        var normalized = ((degrees % 360) + 360) % 360;
+        if (normalized == 0)
+        {
+            return source.Copy();
+        }
+
+        var swapSize = normalized is 90 or 270;
+        var width = swapSize ? source.Height : source.Width;
+        var height = swapSize ? source.Width : source.Height;
+        var rotated = new SKBitmap(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
+        using var canvas = new SKCanvas(rotated);
+        canvas.Clear(SKColors.Transparent);
+        canvas.Translate(width / 2f, height / 2f);
+        canvas.RotateDegrees(normalized);
+        canvas.Translate(-source.Width / 2f, -source.Height / 2f);
+        canvas.DrawBitmap(source, 0, 0);
+        return rotated;
+    }
+
     private static class NativeMethods
     {
         private const string LibraryName = "pdfium";
@@ -283,10 +353,10 @@ public sealed class PdfiumRenderService : IPdfRenderService
         public static extern void FPDF_ClosePage(IntPtr page);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern double FPDF_GetPageWidthF(IntPtr page);
+        public static extern float FPDF_GetPageWidthF(IntPtr page);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern double FPDF_GetPageHeightF(IntPtr page);
+        public static extern float FPDF_GetPageHeightF(IntPtr page);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
         public static extern void FPDF_CloseDocument(IntPtr document);

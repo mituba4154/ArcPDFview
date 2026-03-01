@@ -111,6 +111,20 @@ public sealed class SettingsService : ISettingsService
         Save(settings with { RecentFiles = list });
     }
 
+    /// <inheritdoc />
+    public void SaveSession(IReadOnlyList<SessionEntry> sessionEntries)
+    {
+        ArgumentNullException.ThrowIfNull(sessionEntries);
+        var settings = Load();
+        Save(settings with { LastSession = sessionEntries });
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<SessionEntry> LoadSession()
+    {
+        return Load().LastSession;
+    }
+
     private static string GetSettingsFilePath()
     {
         string baseDirectory;
