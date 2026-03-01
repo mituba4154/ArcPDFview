@@ -37,7 +37,15 @@ public sealed class SettingsService : ISettingsService
             var json = File.ReadAllText(path);
             return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
         }
-        catch
+        catch (IOException)
+        {
+            return new AppSettings();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return new AppSettings();
+        }
+        catch (JsonException)
         {
             return new AppSettings();
         }
@@ -49,7 +57,13 @@ public sealed class SettingsService : ISettingsService
         ArgumentNullException.ThrowIfNull(settings);
 
         var path = SettingsFilePath;
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var directory = Path.GetDirectoryName(path);
+        if (string.IsNullOrWhiteSpace(directory))
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(directory);
         var json = JsonSerializer.Serialize(settings, JsonOptions);
         File.WriteAllText(path, json);
     }

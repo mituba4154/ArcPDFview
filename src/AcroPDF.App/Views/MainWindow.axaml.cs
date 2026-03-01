@@ -28,6 +28,8 @@ public partial class MainWindow : Window
     private const double ScreenDpi = 96d;
     private const int ThumbnailWidthPx = 140;
     private const double A4AspectRatio = 0.707d;
+    private const int TwoPageSpacingPx = 16;
+    private const double SplitPaneMinWidthPx = 120d;
     private readonly IPdfRenderService _pdfRenderService;
     private readonly SearchService _searchService;
     private readonly ISettingsService _settingsService;
@@ -36,7 +38,7 @@ public partial class MainWindow : Window
     private readonly Dictionary<PdfPageControl, (TabViewModel Tab, PdfPage Page)> _continuousPageMap = [];
     private readonly Dictionary<TabViewModel, IReadOnlyList<PdfBookmarkItem>> _bookmarkMap = [];
     private readonly Dictionary<(TabViewModel Tab, int PageNumber), IReadOnlyList<Avalonia.Rect>> _selectionHighlightMap = [];
-    private readonly Dictionary<TabViewModel, FileSystemWatcher> _watchers = [];
+    private readonly Dictionary<TabViewModel, WatchedFile> _watchers = [];
     private readonly List<TabViewModel> _splitDetachedTabs = [];
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _renderCts;
@@ -307,11 +309,11 @@ public partial class MainWindow : Window
             var secondPage = tab.Document.Pages[tab.CurrentPage];
             using var second = await _pdfRenderService.RenderPageAsync(secondPage, tab.ZoomLevel, ct).ConfigureAwait(true);
             using var secondCopy = second.Copy();
-            var merged = new SKBitmap(bitmap.Width + secondCopy.Width + 16, Math.Max(bitmap.Height, secondCopy.Height), SKColorType.Bgra8888, SKAlphaType.Premul);
+            var merged = new SKBitmap(bitmap.Width + secondCopy.Width + TwoPageSpacingPx, Math.Max(bitmap.Height, secondCopy.Height), SKColorType.Bgra8888, SKAlphaType.Premul);
             using var canvas = new SKCanvas(merged);
             canvas.Clear(SKColors.Transparent);
             canvas.DrawBitmap(bitmap, 0, 0);
-            canvas.DrawBitmap(secondCopy, bitmap.Width + 16, 0);
+            canvas.DrawBitmap(secondCopy, bitmap.Width + TwoPageSpacingPx, 0);
             bitmap.Dispose();
             bitmap = merged;
         }
@@ -1483,7 +1485,7 @@ public partial class MainWindow : Window
 
         var point = e.GetPosition(SplitViewGrid);
         var totalWidth = Math.Max(1d, SplitViewGrid.Bounds.Width - 3d);
-        var leftWidth = Math.Clamp(point.X, 120d, totalWidth - 120d);
+        var leftWidth = Math.Clamp(point.X, SplitPaneMinWidthPx, totalWidth - SplitPaneMinWidthPx);
         SplitViewGrid.ColumnDefinitions[0].Width = new GridLength(leftWidth, GridUnitType.Pixel);
         SplitViewGrid.ColumnDefinitions[2].Width = new GridLength(totalWidth - leftWidth, GridUnitType.Pixel);
     }
@@ -1730,14 +1732,14 @@ public partial class MainWindow : Window
         watcher.Changed += changed;
         watcher.Created += changed;
         watcher.Renamed += renamed;
-        _watchers[tab] = watcher;
+        _watchers[tab] = new WatchedFile(watcher, changed, renamed);
     }
 
     private void StopTrackingFileChanges(TabViewModel tab)
     {
-        if (_watchers.Remove(tab, out var watcher))
+        if (_watchers.Remove(tab, out var watchedFile))
         {
-            watcher.Dispose();
+            watchedFile.Dispose();
         }
     }
 
@@ -1830,6 +1832,28 @@ public partial class MainWindow : Window
         canvas.Translate(-source.Width / 2f, -source.Height / 2f);
         canvas.DrawBitmap(source, 0, 0);
         return rotated;
+    }
+
+    private sealed class WatchedFile : IDisposable
+    {
+        private readonly FileSystemWatcher _watcher;
+        private readonly FileSystemEventHandler _changedHandler;
+        private readonly RenamedEventHandler _renamedHandler;
+
+        public WatchedFile(FileSystemWatcher watcher, FileSystemEventHandler changedHandler, RenamedEventHandler renamedHandler)
+        {
+            _watcher = watcher;
+            _changedHandler = changedHandler;
+            _renamedHandler = renamedHandler;
+        }
+
+        public void Dispose()
+        {
+            _watcher.Changed -= _changedHandler;
+            _watcher.Created -= _changedHandler;
+            _watcher.Renamed -= _renamedHandler;
+            _watcher.Dispose();
+        }
     }
 
     private void OpenFileWithoutAwait(string filePath)
