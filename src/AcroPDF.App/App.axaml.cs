@@ -93,12 +93,31 @@ public partial class App : Application
 
     private void ApplyThemePreference()
     {
+        var isHighContrast = PlatformSettings?.GetColorValues()?.ContrastPreference == ColorContrastPreference.High;
         RequestedThemeVariant = _themePreference switch
         {
             ThemePreference.Light => ThemeVariant.Light,
             ThemePreference.Dark => ThemeVariant.Dark,
             _ => ThemeVariant.Default
         };
+
+        if (isHighContrast)
+        {
+            Resources["BgDark"] = Color.Parse("#000000");
+            Resources["BgPanel"] = Color.Parse("#000000");
+            Resources["BgPanel2"] = Color.Parse("#000000");
+            Resources["BgToolbar"] = Color.Parse("#000000");
+            Resources["TextPrimary"] = Color.Parse("#ffffff");
+            Resources["TextSecondary"] = Color.Parse("#ffffff");
+            Resources["TextDim"] = Color.Parse("#ffffff");
+            Resources["Border"] = Color.Parse("#ffffff");
+            Resources["BorderLight"] = Color.Parse("#ffff00");
+            Resources["Accent"] = Color.Parse("#ffff00");
+            Resources["Accent2"] = Color.Parse("#00ffff");
+            Resources["BgTabActive"] = Color.Parse("#000000");
+            Resources["BgTabInactive"] = Color.Parse("#111111");
+            return;
+        }
 
         var useLightPalette = _themePreference == ThemePreference.Light ||
             (_themePreference == ThemePreference.System && ActualThemeVariant == ThemeVariant.Light);

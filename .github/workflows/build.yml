@@ -1,5 +1,5 @@
 name: Build & Test
-
+https://github.com/mituba4154/ArcPDFview/pull/15
 # push または PR のたびに自動実行
 on:
   push:
@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    # Windows と Linux の両方でビルドする
+    # Windows と Linux の両方でビルド + スモーク実行
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest]
@@ -39,33 +39,22 @@ jobs:
       - name: Test
         run: dotnet test --no-build --configuration Release --verbosity normal
 
-  package:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
-    strategy:
-      matrix:
-        include:
-          - os: windows-latest
-            rid: win-x64
-          - os: ubuntu-latest
-            rid: linux-x64
 
-    runs-on: ${{ matrix.os }}
+      - name: Smoke test (Linux)
+        if: runner.os == 'Linux'
+        run: timeout 15s xvfb-run -a dotnet run --project src/AcroPDF.App/AcroPDF.App.csproj --no-build --configuration Release || [ $? -eq 124 ]
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Smoke test (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $process = Start-Process dotnet -ArgumentList 'run --project src/AcroPDF.App/AcroPDF.App.csproj --no-build --configuration Release' -PassThru
+          Start-Sleep -Seconds 15
+          if (!$process.HasExited) {
+            Stop-Process -Id $process.Id
+            exit 0
+          }
+          if ($process.ExitCode -ne 0) {
+            exit $process.ExitCode
+          }
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Publish
-        run: dotnet publish src/AcroPDF.App/AcroPDF.App.csproj -c Release -r ${{ matrix.rid }} --self-contained -o ./publish/${{ matrix.rid }}
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ArcPDFview-${{ matrix.rid }}
-          path: ./publish/${{ matrix.rid }}
