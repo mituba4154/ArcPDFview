@@ -1,6 +1,9 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using AcroPDF.Services;
+using AcroPDF.Services.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AcroPDF.App;
 
@@ -9,6 +12,13 @@ namespace AcroPDF.App;
 /// </summary>
 public partial class App : Application
 {
+    private ServiceProvider? _serviceProvider;
+
+    /// <summary>
+    /// アプリケーションのサービスプロバイダーを取得します。
+    /// </summary>
+    public static IServiceProvider? Services { get; private set; }
+
     /// <summary>
     /// アプリケーションの XAML リソースを読み込みます。
     /// </summary>
@@ -24,7 +34,15 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var mainWindow = new Views.MainWindow();
+            var services = new ServiceCollection();
+            services.AddSingleton<IPdfRenderService, PdfiumRenderService>();
+            services.AddSingleton<IAnnotationService, AnnotationService>();
+            services.AddSingleton<ISearchService, SearchService>();
+            services.AddSingleton<ISettingsService, SettingsService>();
+            _serviceProvider = services.BuildServiceProvider();
+            Services = _serviceProvider;
+
+            var mainWindow = ActivatorUtilities.CreateInstance<Views.MainWindow>(_serviceProvider);
             desktop.MainWindow = mainWindow;
 
             var startupFile = desktop.Args?.FirstOrDefault(static path => !string.IsNullOrWhiteSpace(path));

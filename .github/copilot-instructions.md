@@ -379,16 +379,16 @@ AnnotationOverlay の実装:
 | 4-7 | ページ範囲指定 | ✅ | 2026-03-01 完了。`src/AcroPDF.Core/Models/PrintOptions.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
 | 4-8 | 印刷プレビュー | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
 | 4-9 | 用紙サイズ・向き・部数 | ✅ | 2026-03-01 完了。`src/AcroPDF.Core/Models/PrintOptions.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
-| 4-10 | ページ抽出 | ⬜ | `FPDF_CopyViewerPreferences` |
-| 4-11 | ページ削除 | ⬜ | `FPDFPage_Delete` |
-| 4-12 | ページ回転（保存まで反映） | ⬜ | `FPDFPage_SetRotation` |
-| 4-13 | PDF 結合 | ⬜ | `FPDF_ImportPages` |
-| 4-14 | ページ並び替え UI | ⬜ | サムネイルのドラッグ&ドロップ |
-| 4-15 | 埋め込みファイルの一覧表示 | ⬜ | |
-| 4-16 | 埋め込みファイルの抽出・保存 | ⬜ | |
-| 4-17 | 全ショートカットの最終実装 | ⬜ | spec.md の一覧参照 |
-| 4-18 | 暗号化 PDF のパスワード解除 | ⬜ | |
-| 4-19 | パーミッション対応 | ⬜ | 印刷禁止・コピー禁止等 |
+| 4-10 | ページ抽出 | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/Interfaces/IPdfRenderService.cs`、`src/AcroPDF.Services/PdfiumRenderService.cs` |
+| 4-11 | ページ削除 | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/Interfaces/IPdfRenderService.cs`、`src/AcroPDF.Services/PdfiumRenderService.cs` |
+| 4-12 | ページ回転（保存まで反映） | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/Interfaces/IPdfRenderService.cs`、`src/AcroPDF.Services/PdfiumRenderService.cs` |
+| 4-13 | PDF 結合 | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/Interfaces/IPdfRenderService.cs`、`src/AcroPDF.Services/PdfiumRenderService.cs` |
+| 4-14 | ページ並び替え UI | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 4-15 | 埋め込みファイルの一覧表示 | ✅ | 2026-03-01 完了。`src/AcroPDF.Core/Models/PdfEmbeddedFile.cs`、`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 4-16 | 埋め込みファイルの抽出・保存 | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/Interfaces/IPdfRenderService.cs`、`src/AcroPDF.Services/PdfiumRenderService.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 4-17 | 全ショートカットの最終実装 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 4-18 | 暗号化 PDF のパスワード解除 | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/PdfiumRenderService.cs`、`src/AcroPDF.Core/Models/PdfSecurityInfo.cs` |
+| 4-19 | パーミッション対応 | ✅ | 2026-03-01 完了。`src/AcroPDF.Core/Models/PdfSecurityInfo.cs`、`src/AcroPDF.Services/PdfiumRenderService.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
 
 **Phase 4 完了チェックリスト:**
 - [ ] フォームの入力と保存が動作する

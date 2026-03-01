@@ -22,4 +22,20 @@ public interface ISearchService
         string query,
         SearchOptions options,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// PDF の目次（ブックマーク）を取得します。
+    /// </summary>
+    /// <param name="document">対象ドキュメント。</param>
+    /// <returns>ブックマーク一覧。</returns>
+    IReadOnlyList<PdfBookmarkItem> GetBookmarks(PdfDocument document);
+
+    /// <summary>
+    /// 指定矩形内の文字列を抽出します。
+    /// </summary>
+    /// <param name="page">対象ページ。</param>
+    /// <param name="selectionBounds">選択矩形。</param>
+    /// <param name="ct">キャンセルトークン。</param>
+    /// <returns>抽出結果。</returns>
+    Task<TextSelectionResult> SelectTextAsync(PdfPage page, PdfTextBounds selectionBounds, CancellationToken ct = default);
 }

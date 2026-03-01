@@ -17,6 +17,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using Microsoft.Extensions.DependencyInjection;
 using SkiaSharp;
 
 namespace AcroPDF.App.Views;
@@ -40,7 +41,7 @@ public partial class MainWindow : Window
     private static readonly TimeSpan ContinuousScrollDebounceDelay = TimeSpan.FromMilliseconds(50);
     private readonly IPdfRenderService _pdfRenderService;
     private readonly IAnnotationService _annotationService;
-    private readonly SearchService _searchService;
+    private readonly ISearchService _searchService;
     private readonly SearchViewModel _searchViewModel;
     private readonly ISettingsService _settingsService;
     private readonly MainWindowViewModel _mainWindowViewModel = new();
@@ -50,6 +51,8 @@ public partial class MainWindow : Window
     private readonly Dictionary<(TabViewModel Tab, int PageNumber), IReadOnlyList<Avalonia.Rect>> _selectionHighlightMap = [];
     private readonly Dictionary<(TabViewModel Tab, int PageNumber), IReadOnlyList<PdfTextBounds>> _selectionPdfBoundsMap = [];
     private readonly Dictionary<(TabViewModel Tab, int PageNumber), IReadOnlyList<PdfFormField>> _formFieldMap = [];
+    private readonly Dictionary<TabViewModel, IReadOnlyList<PdfEmbeddedFile>> _attachmentMap = [];
+    private readonly Dictionary<TabViewModel, PdfSecurityInfo> _securityMap = [];
     private readonly Dictionary<TabViewModel, WatchedFile> _watchers = [];
     private readonly List<TabViewModel> _splitDetachedTabs = [];
     private readonly ObservableCollection<Control> _continuousPageItems = [];
@@ -70,6 +73,7 @@ public partial class MainWindow : Window
     private PdfPage? _selectionPage;
     private Point _selectionStartPdfPoint;
     private string _selectedText = string.Empty;
+    private PdfSecurityInfo _activeSecurityInfo = PdfSecurityInfo.FullAccess;
     private AnnotationTool _activeAnnotationTool = AnnotationTool.TextSelect;
     private ShapeType _activeShapeType = ShapeType.Rectangle;
     private string _activeStrokeColorHex = "#ff0000";
@@ -78,12 +82,17 @@ public partial class MainWindow : Window
     private readonly List<AnnotationPoint> _currentFreehandStroke = [];
     private Avalonia.Controls.Shapes.Polyline? _activeFreehandPreview;
     private Point? _shapeStartPdfPoint;
+    private int? _thumbnailDragPageNumber;
 
     /// <summary>
     /// <see cref="MainWindow"/> の新しいインスタンスを初期化します。
     /// </summary>
     public MainWindow()
-        : this(new PdfiumRenderService())
+        : this(
+            ResolveRequiredService<IPdfRenderService>(),
+            ResolveRequiredService<IAnnotationService>(),
+            ResolveRequiredService<ISearchService>(),
+            ResolveRequiredService<ISettingsService>())
     {
     }
 
@@ -91,13 +100,20 @@ public partial class MainWindow : Window
     /// <see cref="MainWindow"/> の新しいインスタンスを初期化します。
     /// </summary>
     /// <param name="pdfRenderService">PDF レンダリングサービス。</param>
-    public MainWindow(IPdfRenderService pdfRenderService)
+    /// <param name="annotationService">注釈サービス。</param>
+    /// <param name="searchService">検索サービス。</param>
+    /// <param name="settingsService">設定サービス。</param>
+    public MainWindow(
+        IPdfRenderService pdfRenderService,
+        IAnnotationService annotationService,
+        ISearchService searchService,
+        ISettingsService settingsService)
     {
         _pdfRenderService = pdfRenderService ?? throw new ArgumentNullException(nameof(pdfRenderService));
-        _annotationService = new AnnotationService();
-        _searchService = new SearchService();
+        _annotationService = annotationService ?? throw new ArgumentNullException(nameof(annotationService));
+        _searchService = searchService ?? throw new ArgumentNullException(nameof(searchService));
         _searchViewModel = new SearchViewModel(_searchService);
-        _settingsService = new SettingsService();
+        _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
         _settings = _settingsService.Load();
         InitializeComponent();
         ContinuousPageItemsControl.ItemsSource = _continuousPageItems;
@@ -113,6 +129,13 @@ public partial class MainWindow : Window
         ApplySettingsToToolbar();
         InitializeAnnotationTooling();
         RebuildRecentFilesMenu();
+    }
+
+    private static T ResolveRequiredService<T>()
+        where T : notnull
+    {
+        var provider = App.Services ?? throw new InvalidOperationException("Application services are not initialized.");
+        return provider.GetRequiredService<T>();
     }
 
     /// <summary>
@@ -160,6 +183,8 @@ public partial class MainWindow : Window
         var tab = new TabViewModel(document);
         var annotations = await _annotationService.LoadAnnotationsAsync(document).ConfigureAwait(true);
         document.SetAnnotations(annotations);
+        _securityMap[tab] = await _pdfRenderService.GetSecurityInfoAsync(document).ConfigureAwait(true);
+        _attachmentMap[tab] = await _pdfRenderService.GetEmbeddedFilesAsync(document).ConfigureAwait(true);
         tab.ZoomLevel = _settings.DefaultZoom;
         tab.CurrentPage = Math.Clamp(initialPage, 1, tab.PageCount);
         switch (_settings.DefaultViewMode)
@@ -222,11 +247,13 @@ public partial class MainWindow : Window
     {
         _activeTab = tab;
         _mainWindowViewModel.ActiveTab = tab;
+        _activeSecurityInfo = _securityMap.TryGetValue(tab, out var security) ? security : PdfSecurityInfo.FullAccess;
         RebuildTabBar();
         RebuildSplitTabSelectors();
         UpdateToolbarState();
         RebuildThumbnailPanel();
         RebuildBookmarkPanel();
+        RebuildAttachmentPanel();
         RebuildAnnotationPanel();
         UpdateFileInfoPanel();
         UpdateSearchOverlayState();
@@ -678,7 +705,8 @@ public partial class MainWindow : Window
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
                 Padding = new Thickness(0),
-                Content = border
+                Content = border,
+                Tag = thumbnail.PageNumber
             };
             border.Child = stack;
             button.Click += (_, _) =>
@@ -687,6 +715,12 @@ public partial class MainWindow : Window
                 RebuildThumbnailPanel();
                 _ = RenderActiveTabAsync();
             };
+            button.PointerPressed += OnThumbnailPointerPressed;
+            button.PointerMoved += OnThumbnailPointerMoved;
+            DragDrop.SetAllowDrop(button, true);
+            button.AddHandler(DragDrop.DragOverEvent, OnThumbnailDragOver);
+            button.AddHandler(DragDrop.DragLeaveEvent, OnThumbnailDragLeave);
+            button.AddHandler(DragDrop.DropEvent, OnThumbnailDrop);
 
             ThumbnailPanel.Children.Add(button);
 
@@ -695,6 +729,90 @@ public partial class MainWindow : Window
                 button.BringIntoView();
             }
         }
+    }
+
+    private void OnThumbnailPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is Control control && control.Tag is int pageNumber)
+        {
+            _thumbnailDragPageNumber = pageNumber;
+        }
+    }
+
+    private async void OnThumbnailPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_thumbnailDragPageNumber is null ||
+            sender is not Control control ||
+            e.GetCurrentPoint(control).Properties.IsLeftButtonPressed is false)
+        {
+            return;
+        }
+
+        var dragNumber = _thumbnailDragPageNumber.Value;
+        _thumbnailDragPageNumber = null;
+        var dataObject = new DataObject();
+        dataObject.Set("acro.thumbnail.page", dragNumber.ToString(CultureInfo.InvariantCulture));
+        await DragDrop.DoDragDrop(e, dataObject, DragDropEffects.Move).ConfigureAwait(true);
+    }
+
+    private void OnThumbnailDragOver(object? sender, DragEventArgs e)
+    {
+        Border? border = null;
+        if (sender is Button button && button.Content is Border contentBorder)
+        {
+            border = contentBorder;
+        }
+        if (e.Data.Contains("acro.thumbnail.page"))
+        {
+            e.DragEffects = DragDropEffects.Move;
+            if (border is not null)
+            {
+                border.BorderBrush = new SolidColorBrush((Color)Application.Current!.FindResource("Accent")!);
+            }
+        }
+    }
+
+    private void OnThumbnailDragLeave(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is not Button button ||
+            button.Content is not Border border ||
+            button.Tag is not int pageNumber ||
+            _activeTab is null)
+        {
+            return;
+        }
+
+        var selected = _activeTab.CurrentPage == pageNumber;
+        border.BorderBrush = new SolidColorBrush((Color)Application.Current!.FindResource(selected ? "Accent" : "BorderLight")!);
+    }
+
+    private async void OnThumbnailDrop(object? sender, DragEventArgs e)
+    {
+        if (_activeTab is null ||
+            sender is not Button button ||
+            button.Tag is not int targetPage ||
+            !e.Data.Contains("acro.thumbnail.page"))
+        {
+            return;
+        }
+
+        var sourceRaw = e.Data.Get("acro.thumbnail.page")?.ToString();
+        if (!int.TryParse(sourceRaw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var sourcePage) ||
+            sourcePage == targetPage)
+        {
+            return;
+        }
+
+        var order = Enumerable.Range(1, _activeTab.PageCount).ToList();
+        order.Remove(sourcePage);
+        var targetIndex = Math.Max(0, order.IndexOf(targetPage));
+        order.Insert(targetIndex, sourcePage);
+        await _pdfRenderService.ReorderPagesAsync(_activeTab.Document, order).ConfigureAwait(true);
+
+        var filePath = _activeTab.Document.FilePath;
+        var currentPage = Math.Clamp(targetPage, 1, _activeTab.PageCount);
+        CloseTabCore(_activeTab);
+        _ = await OpenFileAsync(filePath, currentPage).ConfigureAwait(true);
     }
 
     private void RebuildBookmarkPanel()
@@ -709,6 +827,21 @@ public partial class MainWindow : Window
         {
             AddBookmarkNode(BookmarkPanel, bookmark, 0);
         }
+    }
+
+    private void RebuildAttachmentPanel()
+    {
+        if (_activeTab is null || !_attachmentMap.TryGetValue(_activeTab, out var attachments) || attachments.Count == 0)
+        {
+            AttachmentListBox.ItemsSource = Array.Empty<object>();
+            ExtractAttachmentButton.IsEnabled = false;
+            return;
+        }
+
+        AttachmentListBox.ItemsSource = attachments
+            .Select(file => new AttachmentPanelItem(file, $"{file.Name} ({FormatSize(file.Size)})"))
+            .ToArray();
+        ExtractAttachmentButton.IsEnabled = AttachmentListBox.SelectedItem is AttachmentPanelItem;
     }
 
     private void AddBookmarkNode(Panel host, PdfBookmarkItem bookmark, int depth)
@@ -1293,7 +1426,15 @@ public partial class MainWindow : Window
                 ? $"{Math.Max(1d, fileInfo.Length / 1024d):0} KB"
                 : $"{fileInfo.Length / 1024d / 1024d:0.0} MB"
             : "不明";
-        FileInfoTextBlock.Text = $"ページ: {_activeTab.PageCount} / サイズ: {size}";
+        FileInfoTextBlock.Text =
+            $"ページ: {_activeTab.PageCount} / サイズ: {size} / 暗号化: {(_activeSecurityInfo.IsEncrypted ? _activeSecurityInfo.EncryptionDescription : "なし")}";
+    }
+
+    private static string FormatSize(long size)
+    {
+        return size < 1024 * 1024
+            ? $"{Math.Max(1d, size / 1024d):0} KB"
+            : $"{size / 1024d / 1024d:0.0} MB";
     }
 
     private static string GetAnnotationBadge(Annotation annotation)
@@ -1394,7 +1535,17 @@ public partial class MainWindow : Window
         FreehandToolButton.IsChecked = _activeAnnotationTool == AnnotationTool.Freehand;
         ShapeToolButton.IsChecked = _activeAnnotationTool == AnnotationTool.Shape;
         StampToolButton.IsChecked = _activeAnnotationTool == AnnotationTool.Stamp;
-        DeleteAnnotationButton.IsEnabled = AnnotationPanelListBox.SelectedItem is AnnotationPanelItem;
+        var canAnnotate = hasTab && _activeSecurityInfo.CanAnnotate;
+        HighlightToolButton.IsEnabled = canAnnotate;
+        CommentToolButton.IsEnabled = canAnnotate;
+        FreehandToolButton.IsEnabled = canAnnotate;
+        ShapeToolButton.IsEnabled = canAnnotate;
+        StampToolButton.IsEnabled = canAnnotate;
+        DeleteAnnotationButton.IsEnabled = canAnnotate && AnnotationPanelListBox.SelectedItem is AnnotationPanelItem;
+        ExportFdfButton.IsEnabled = canAnnotate;
+        ImportFdfButton.IsEnabled = canAnnotate;
+        PrintButton.IsEnabled = hasTab && _activeSecurityInfo.CanPrint;
+        ExtractAttachmentButton.IsEnabled = hasTab && AttachmentListBox.SelectedItem is AttachmentPanelItem;
     }
 
     private void UpdateStatusBar()
@@ -1759,6 +1910,8 @@ public partial class MainWindow : Window
         tab.ThumbnailUpdated -= OnThumbnailUpdated;
         tab.CancelThumbnailGeneration();
         _bookmarkMap.Remove(tab);
+        _attachmentMap.Remove(tab);
+        _securityMap.Remove(tab);
         StopTrackingFileChanges(tab);
         foreach (var key in _selectionHighlightMap.Keys.Where(key => ReferenceEquals(key.Tab, tab)).ToArray())
         {
@@ -1789,12 +1942,14 @@ public partial class MainWindow : Window
             RebuildTabBar();
             RebuildSplitTabSelectors();
             RebuildThumbnailPanel();
+            RebuildAttachmentPanel();
             RebuildAnnotationPanel();
             CancelRender();
             ClearPageViews();
             SetEmptyStateVisible(true);
             UpdateToolbarState();
             UpdateStatusBar();
+            _activeSecurityInfo = PdfSecurityInfo.FullAccess;
             return;
         }
 
@@ -1889,6 +2044,11 @@ public partial class MainWindow : Window
 
     private async Task CopySelectedTextAsync()
     {
+        if (!_activeSecurityInfo.CanCopy)
+        {
+            return;
+        }
+
         var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
         if (clipboard is null || string.IsNullOrWhiteSpace(_selectedText))
         {
@@ -2370,8 +2530,44 @@ public partial class MainWindow : Window
         _ = RenderActiveTabAsync();
     }
 
+    private void OnAttachmentSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        ExtractAttachmentButton.IsEnabled = AttachmentListBox.SelectedItem is AttachmentPanelItem;
+    }
+
+    private async void OnExtractAttachmentClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (_activeTab is null || AttachmentListBox.SelectedItem is not AttachmentPanelItem item)
+        {
+            return;
+        }
+
+        var output = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            SuggestedFileName = item.File.Name,
+            FileTypeChoices =
+            [
+                new FilePickerFileType("All files")
+                {
+                    Patterns = ["*"]
+                }
+            ]
+        }).ConfigureAwait(true);
+        if (output is null)
+        {
+            return;
+        }
+
+        await _pdfRenderService.ExtractEmbeddedFileAsync(_activeTab.Document, item.File, output.Path.LocalPath).ConfigureAwait(true);
+    }
+
     private void OnDeleteAnnotationClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
+        if (!_activeSecurityInfo.CanAnnotate)
+        {
+            return;
+        }
+
         if (_activeTab is null || AnnotationPanelListBox.SelectedItem is not AnnotationPanelItem item)
         {
             return;
@@ -2611,6 +2807,11 @@ public partial class MainWindow : Window
 
     private async void OnPrintClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
+        if (!_activeSecurityInfo.CanPrint)
+        {
+            return;
+        }
+
         await ShowPrintDialogAsync().ConfigureAwait(true);
     }
 
@@ -2815,9 +3016,19 @@ public partial class MainWindow : Window
 
     private async void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
+        var ctrl = (e.KeyModifiers & KeyModifiers.Control) != 0;
+        var shift = (e.KeyModifiers & KeyModifiers.Shift) != 0;
+
         if (e.Key == Key.F11)
         {
             WindowState = WindowState == WindowState.FullScreen ? WindowState.Normal : WindowState.FullScreen;
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && e.Key == Key.O)
+        {
+            await OpenFileFromPickerAsync().ConfigureAwait(true);
             e.Handled = true;
             return;
         }
@@ -2828,14 +3039,80 @@ public partial class MainWindow : Window
             return;
         }
 
-        if ((e.KeyModifiers & KeyModifiers.Control) != 0 && e.Key == Key.W)
+        if (ctrl && e.Key == Key.W)
         {
             await CloseTabAsync(targetTab).ConfigureAwait(true);
             e.Handled = true;
             return;
         }
 
-        if ((e.KeyModifiers & KeyModifiers.Control) != 0 && e.Key == Key.F)
+        if (ctrl && e.Key == Key.S)
+        {
+            if (_activeSecurityInfo.CanAnnotate)
+            {
+                await _annotationService.SaveAnnotationsAsync(targetTab.Document).ConfigureAwait(true);
+            }
+
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && e.Key == Key.G)
+        {
+            PageNumberTextBox.Focus();
+            PageNumberTextBox.SelectAll();
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && (e.Key == Key.OemPlus || e.Key == Key.Add))
+        {
+            targetTab.ZoomInCommand.Execute(null);
+            _ = RenderActiveTabAsync();
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && (e.Key == Key.OemMinus || e.Key == Key.Subtract))
+        {
+            targetTab.ZoomOutCommand.Execute(null);
+            _ = RenderActiveTabAsync();
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && (e.Key == Key.D0 || e.Key == Key.NumPad0))
+        {
+            targetTab.ZoomActualSizeCommand.Execute(null);
+            _ = RenderActiveTabAsync();
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && shift && e.Key == Key.H)
+        {
+            targetTab.FitToWidth(SinglePageScrollViewer.Bounds.Width);
+            _ = RenderActiveTabAsync();
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && shift && e.Key == Key.F)
+        {
+            targetTab.FitToPage(SinglePageScrollViewer.Bounds.Width, SinglePageScrollViewer.Bounds.Height);
+            _ = RenderActiveTabAsync();
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && e.Key == Key.Tab)
+        {
+            SwitchTab(shift ? -1 : 1);
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && e.Key == Key.F)
         {
             if (_activeTab is null)
             {
@@ -2849,28 +3126,32 @@ public partial class MainWindow : Window
             return;
         }
 
-        if ((e.KeyModifiers & KeyModifiers.Control) != 0 && e.Key == Key.C)
+        if (ctrl && e.Key == Key.C)
         {
             _ = CopySelectedTextAsync();
             e.Handled = true;
             return;
         }
 
-        if ((e.KeyModifiers & KeyModifiers.Control) != 0 && e.Key == Key.P)
+        if (ctrl && e.Key == Key.P)
         {
-            await ShowPrintDialogAsync().ConfigureAwait(true);
+            if (_activeSecurityInfo.CanPrint)
+            {
+                await ShowPrintDialogAsync().ConfigureAwait(true);
+            }
+
             e.Handled = true;
             return;
         }
 
         if (e.Key == Key.F3)
         {
-            MoveToNextSearchResult((e.KeyModifiers & KeyModifiers.Shift) != 0);
+            MoveToNextSearchResult(shift);
             e.Handled = true;
             return;
         }
 
-        if ((e.KeyModifiers & KeyModifiers.Control) != 0)
+        if (ctrl)
         {
             return;
         }
@@ -2896,6 +3177,7 @@ public partial class MainWindow : Window
                 }
 
                 _activeTab.IsSearchVisible = false;
+                SetAnnotationTool(AnnotationTool.TextSelect);
                 UpdateSearchOverlayState();
                 e.Handled = true;
                 return;
@@ -2987,6 +3269,28 @@ public partial class MainWindow : Window
                 _activeTab is null || !string.Equals(_splitSecondaryTab.Document.FilePath, _activeTab.Document.FilePath, StringComparison.OrdinalIgnoreCase)
                     ? -1
                     : _tabs.IndexOf(_activeTab));
+    }
+
+    private void SwitchTab(int offset)
+    {
+        if (_tabs.Count == 0 || _activeTab is null)
+        {
+            return;
+        }
+
+        var current = _tabs.IndexOf(_activeTab);
+        if (current < 0)
+        {
+            return;
+        }
+
+        var next = (current + offset) % _tabs.Count;
+        if (next < 0)
+        {
+            next += _tabs.Count;
+        }
+
+        ActivateTab(_tabs[next]);
     }
 
     private void EnsureSplitSecondaryTab()
@@ -3554,6 +3858,11 @@ public partial class MainWindow : Window
     {
         public string Display => $"{Badge} P{PageNumber}: {Summary}";
 
+        public override string ToString() => Display;
+    }
+
+    private sealed record AttachmentPanelItem(PdfEmbeddedFile File, string Display)
+    {
         public override string ToString() => Display;
     }
 }

@@ -40,5 +40,15 @@ public sealed class SearchViewModelTests
             LastOptions = options;
             return Task.FromResult(_results);
         }
+
+        public IReadOnlyList<PdfBookmarkItem> GetBookmarks(PdfDocument document)
+        {
+            return [];
+        }
+
+        public Task<TextSelectionResult> SelectTextAsync(PdfPage page, PdfTextBounds selectionBounds, CancellationToken ct = default)
+        {
+            return Task.FromResult(new TextSelectionResult(string.Empty, []));
+        }
     }
 }
