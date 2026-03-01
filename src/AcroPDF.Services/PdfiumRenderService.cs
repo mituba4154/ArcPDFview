@@ -204,7 +204,8 @@ public sealed class PdfiumRenderService : IPdfRenderService
             {
                 var secondPage = document.Pages[currentPage];
                 using var second = await RenderPageAsync(secondPage, zoomLevel, ct).ConfigureAwait(false);
-                var merged = new SKBitmap(bitmap.Width + second.Width + TwoPageSpacingPx, Math.Max(bitmap.Height, second.Height), SKColorType.Bgra8888, SKAlphaType.Premul);
+                var mergedWidth = checked(bitmap.Width + second.Width + TwoPageSpacingPx);
+                var merged = new SKBitmap(mergedWidth, Math.Max(bitmap.Height, second.Height), SKColorType.Bgra8888, SKAlphaType.Premul);
                 using var canvas = new SKCanvas(merged);
                 canvas.Clear(SKColors.Transparent);
                 canvas.DrawBitmap(bitmap, 0, 0);

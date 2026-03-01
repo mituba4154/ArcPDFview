@@ -62,6 +62,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public void ReplaceTabs(IEnumerable<TabViewModel> tabs)
     {
         ArgumentNullException.ThrowIfNull(tabs);
-        Tabs = new ObservableCollection<TabViewModel>(tabs);
+        Tabs.Clear();
+        foreach (var tab in tabs)
+        {
+            Tabs.Add(tab);
+        }
     }
 }

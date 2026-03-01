@@ -856,7 +856,6 @@ public partial class MainWindow : Window
         }
         _pdfRenderService.Close(tab.Document);
         tab.Dispose();
-        _mainWindowViewModel.ReplaceTabs(_tabs);
 
         if (_tabs.Count == 0)
         {
