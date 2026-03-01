@@ -61,13 +61,23 @@ public class PdfiumRenderServiceTests
         source.ClearModified();
 
         var path = Path.Combine(Path.GetTempPath(), $"acropdf-{Guid.NewGuid():N}.fdf");
-        await service.ExportAsFdfAsync(source, path);
+        try
+        {
+            await service.ExportAsFdfAsync(source, path);
 
-        using var imported = new PdfDocument("target.pdf", IntPtr.Zero, [], _ => { });
-        await service.ImportFdfAsync(imported, path);
+            using var imported = new PdfDocument("target.pdf", IntPtr.Zero, [], _ => { });
+            await service.ImportFdfAsync(imported, path);
 
-        Assert.Equal(2, imported.Annotations.Count);
-        Assert.True(imported.Annotations.OfType<HighlightAnnotation>().Any());
-        Assert.True(imported.Annotations.OfType<FreehandAnnotation>().Any());
+            Assert.Equal(2, imported.Annotations.Count);
+            Assert.True(imported.Annotations.OfType<HighlightAnnotation>().Any());
+            Assert.True(imported.Annotations.OfType<FreehandAnnotation>().Any());
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
     }
 }

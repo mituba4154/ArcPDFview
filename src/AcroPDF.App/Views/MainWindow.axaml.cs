@@ -31,6 +31,8 @@ public partial class MainWindow : Window
     private const double SplitPaneMinWidthPx = 120d;
     private const double DefaultCommentHalfHeightPt = 18d;
     private const double DefaultCommentWidthPt = 120d;
+    private const string StampPrefix = "[STAMP]";
+    private const string DefaultStampText = "承認済み";
     private readonly IPdfRenderService _pdfRenderService;
     private readonly IAnnotationService _annotationService;
     private readonly SearchService _searchService;
@@ -837,7 +839,11 @@ public partial class MainWindow : Window
 
         var path = _activeTab.Document.FilePath;
         var fileInfo = new FileInfo(path);
-        var size = fileInfo.Exists ? $"{Math.Max(1d, fileInfo.Length / 1024d / 1024d):0.0} MB" : "不明";
+        var size = fileInfo.Exists
+            ? fileInfo.Length < (1024 * 1024)
+                ? $"{Math.Max(1d, fileInfo.Length / 1024d):0} KB"
+                : $"{fileInfo.Length / 1024d / 1024d:0.0} MB"
+            : "不明";
         FileInfoTextBlock.Text = $"ページ: {_activeTab.PageCount} / サイズ: {size}";
     }
 
@@ -884,7 +890,7 @@ public partial class MainWindow : Window
     }
 
     private static bool IsStampComment(CommentAnnotation comment)
-        => comment.Text.StartsWith("[STAMP]", StringComparison.Ordinal);
+        => comment.Text?.StartsWith(StampPrefix, StringComparison.Ordinal) == true;
 
     private static Color ParseColorHex(string? colorHex, Color fallback)
     {
@@ -1215,15 +1221,17 @@ public partial class MainWindow : Window
 
     private void AddPresetStamp(TabViewModel tab, PdfPage page, string stampText)
     {
-        var left = Math.Clamp(tab.MouseX, 0, page.WidthPt);
-        var top = Math.Clamp(tab.MouseY + 20d, 0, page.HeightPt);
-        var right = Math.Clamp(left + 90d, 0, page.WidthPt);
-        var bottom = Math.Clamp(top - 28d, 0, page.HeightPt);
+        var stampWidth = Math.Min(90d, page.WidthPt);
+        var stampHeight = Math.Min(28d, page.HeightPt);
+        var left = Math.Clamp(tab.MouseX, 0, Math.Max(0d, page.WidthPt - stampWidth));
+        var top = Math.Clamp(tab.MouseY + 20d, stampHeight, page.HeightPt);
+        var right = left + stampWidth;
+        var bottom = top - stampHeight;
         tab.Document.AddAnnotation(new CommentAnnotation
         {
             PageNumber = page.PageNumber,
             Bounds = new PdfTextBounds(left, top, right, bottom),
-            Text = $"[STAMP]{stampText}",
+            Text = $"{StampPrefix}{stampText}",
             Author = Environment.UserName,
             IsOpen = false
         });
@@ -1604,7 +1612,7 @@ public partial class MainWindow : Window
 
         if (_activeAnnotationTool == AnnotationTool.Stamp)
         {
-            AddPresetStamp(tab, page, "承認済み");
+            AddPresetStamp(tab, page, DefaultStampText);
             RebuildAnnotationPanel();
             _ = RenderActiveTabAsync();
             return;

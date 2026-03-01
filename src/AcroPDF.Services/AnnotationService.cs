@@ -19,6 +19,8 @@ public sealed class AnnotationService : IAnnotationService
     private const int AnnotSubtypeStrikeOut = 13;
     private const int AnnotColorTypeNormal = 0;
     private const int SaveFlagNoIncremental = 1;
+    private const string DefaultStrokeColorHex = "#ff0000";
+    private const double DefaultStrokeWidth = 2d;
     private const uint CommentColorR = 48;
     private const uint CommentColorG = 112;
     private const uint CommentColorB = 255;
@@ -358,8 +360,8 @@ public sealed class AnnotationService : IAnnotationService
                 Bounds = bounds,
                 Author = record.Author ?? Environment.UserName,
                 Comment = record.Comment,
-                StrokeColorHex = string.IsNullOrWhiteSpace(record.StrokeColorHex) ? "#ff0000" : record.StrokeColorHex,
-                StrokeWidth = record.StrokeWidth <= 0d ? 2d : record.StrokeWidth,
+                StrokeColorHex = string.IsNullOrWhiteSpace(record.StrokeColorHex) ? DefaultStrokeColorHex : record.StrokeColorHex,
+                StrokeWidth = record.StrokeWidth <= 0d ? DefaultStrokeWidth : record.StrokeWidth,
                 Strokes = record.Strokes
                     .Select(stroke => stroke.Select(point => new AnnotationPoint(point.X, point.Y)).ToArray() as IReadOnlyList<AnnotationPoint>)
                     .ToArray()
@@ -374,9 +376,9 @@ public sealed class AnnotationService : IAnnotationService
                 Type = Enum.TryParse<ShapeType>(record.ShapeType, true, out var shapeType)
                     ? shapeType
                     : ShapeType.Rectangle,
-                StrokeColorHex = string.IsNullOrWhiteSpace(record.StrokeColorHex) ? "#ff0000" : record.StrokeColorHex,
+                StrokeColorHex = string.IsNullOrWhiteSpace(record.StrokeColorHex) ? DefaultStrokeColorHex : record.StrokeColorHex,
                 FillColorHex = record.FillColorHex,
-                StrokeWidth = record.StrokeWidth <= 0d ? 2d : record.StrokeWidth
+                StrokeWidth = record.StrokeWidth <= 0d ? DefaultStrokeWidth : record.StrokeWidth
             },
             _ => null
         };

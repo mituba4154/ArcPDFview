@@ -87,6 +87,7 @@ public abstract class SKGLControlView : Control
 public sealed class PdfPageControl : SKGLControlView
 {
     private const byte HighlightOverlayAlpha = 89;
+    private const float MinArrowLengthEpsilon = 0.01f;
 
     static PdfPageControl()
     {
@@ -406,12 +407,19 @@ public sealed class PdfPageControl : SKGLControlView
         }
     }
 
+    /// <summary>
+    /// 線分終点に矢印ヘッドを描画します。
+    /// </summary>
+    /// <param name="canvas">描画先キャンバス。</param>
+    /// <param name="paint">線描画ペイント。</param>
+    /// <param name="start">線分始点。</param>
+    /// <param name="end">線分終点。</param>
     private static void DrawArrowHead(SKCanvas canvas, SKPaint paint, SKPoint start, SKPoint end)
     {
         var dx = end.X - start.X;
         var dy = end.Y - start.Y;
         var len = MathF.Sqrt((dx * dx) + (dy * dy));
-        if (len < 0.01f)
+        if (len < MinArrowLengthEpsilon)
         {
             return;
         }
