@@ -219,6 +219,18 @@
                           Spacing="2" />
             </ScrollViewer>
           </TabItem>
+          <TabItem Header="添付">
+            <DockPanel Margin="8">
+              <Button x:Name="ExtractAttachmentButton"
+                      DockPanel.Dock="Bottom"
+                      Margin="0,8,0,0"
+                      Content="保存"
+                      IsEnabled="False"
+                      Click="OnExtractAttachmentClicked" />
+              <ListBox x:Name="AttachmentListBox"
+                       SelectionChanged="OnAttachmentSelectionChanged" />
+            </DockPanel>
+          </TabItem>
           </TabControl>
       </Border>
 
