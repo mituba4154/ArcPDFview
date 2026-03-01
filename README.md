@@ -1,8 +1,8 @@
 # ArcPDFview (AcroPDF)
 
-Windows / Linux 向けの軽量 PDF ビューワーです。Adobe Acrobat Reader と同等の機能を持ちながら、サブスクリプション不要・広告なしで利用できます。
+Windows / Linux 向けの軽量 PDF ビューワーです。サブスクリプション不要・広告なしで利用できます。
 
-A lightweight PDF viewer for Windows and Linux. It provides features comparable to Adobe Acrobat Reader, with no subscription and no ads.
+A lightweight PDF viewer for Windows and Linux.
 
 ---
 
