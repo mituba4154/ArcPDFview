@@ -1,0 +1,15 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AcroPDF.App.Views.MainWindow"
+        Title="AcroPDF"
+        Width="1280"
+        Height="800"
+        Background="{DynamicResource BgDark}">
+  <Grid>
+    <TextBlock HorizontalAlignment="Center"
+               VerticalAlignment="Center"
+               FontSize="24"
+               Foreground="{DynamicResource TextPrimary}"
+               Text="AcroPDF" />
+  </Grid>
+</Window>
