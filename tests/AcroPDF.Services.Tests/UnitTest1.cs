@@ -1,5 +1,6 @@
 using AcroPDF.Services;
 using AcroPDF.Core.Models;
+using System.Reflection;
 
 namespace AcroPDF.Services.Tests;
 
@@ -79,5 +80,33 @@ public class PdfiumRenderServiceTests
                 File.Delete(path);
             }
         }
+    }
+
+    [Fact]
+    public void ExpandToPdfiumCharEvents_BmpCharacter_ReturnsSingleCodeUnit()
+    {
+        var actual = InvokeExpandToPdfiumCharEvents("A");
+
+        Assert.Equal([(int)'A'], actual);
+    }
+
+    [Fact]
+    public void ExpandToPdfiumCharEvents_SupplementaryCharacter_ReturnsSurrogatePair()
+    {
+        var actual = InvokeExpandToPdfiumCharEvents("😀");
+
+        Assert.Equal([0xD83D, 0xDE00], actual);
+    }
+
+    private static int[] InvokeExpandToPdfiumCharEvents(string text)
+    {
+        var method = typeof(PdfiumRenderService).GetMethod(
+            "ExpandToPdfiumCharEvents",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(method);
+        var values = method!.Invoke(null, [text]) as IEnumerable<int>;
+        Assert.NotNull(values);
+        return values!.ToArray();
     }
 }
