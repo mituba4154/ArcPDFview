@@ -196,7 +196,7 @@ public partial class MainWindow : Window
         document.SetAnnotations(annotations);
         _securityMap[tab] = await _pdfRenderService.GetSecurityInfoAsync(document).ConfigureAwait(true);
         _attachmentMap[tab] = await _pdfRenderService.GetEmbeddedFilesAsync(document).ConfigureAwait(true);
-        tab.ZoomLevel = _settings.DefaultZoom;
+        tab.ZoomLevel = PdfiumRenderService.ClampZoomLevel(_settings.DefaultZoom);
         tab.CurrentPage = Math.Clamp(initialPage, 1, tab.PageCount);
         switch (_settings.DefaultViewMode)
         {

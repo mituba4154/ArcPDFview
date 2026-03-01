@@ -445,16 +445,6 @@ public sealed partial class TabViewModel : ObservableObject, IDisposable
         UpdateSelectedThumbnail();
     }
 
-    partial void OnZoomLevelChanged(double value)
-    {
-        ZoomLevel = PdfiumRenderService.ClampZoomLevel(value);
-    }
-
-    partial void OnRotationDegreesChanged(int value)
-    {
-        RotationDegrees = NormalizeRotation(value);
-    }
-
     private PdfPage? GetCurrentPageModel()
     {
         var pageIndex = CurrentPage - 1;

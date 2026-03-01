@@ -23,6 +23,17 @@ jobs:
       - name: Publish self-contained (win-x64)
         run: dotnet publish src/AcroPDF.App/AcroPDF.App.csproj -c Release -r win-x64 --self-contained -o publish/win-x64
 
+      - name: Install WiX v4
+        shell: pwsh
+        run: dotnet tool install --global wix --version 4.*
+
+      - name: Build MSI package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifacts -Force | Out-Null
+          $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
+          wix build installer/ArcPDFview.wxs -arch x64 -bindpath PublishDir=publish/win-x64 -out artifacts/ArcPDFview-win-x64.msi
+
       - name: Prepare Windows artifacts
         shell: pwsh
         run: |
@@ -131,5 +142,6 @@ jobs:
           files: |
             release-artifacts/**/ArcPDFview-win-x64.exe
             release-artifacts/**/ArcPDFview-win-x64.zip
+            release-artifacts/**/ArcPDFview-win-x64.msi
             release-artifacts/**/ArcPDFview-linux-x64.deb
             release-artifacts/**/ArcPDFview-linux-x64.AppImage
