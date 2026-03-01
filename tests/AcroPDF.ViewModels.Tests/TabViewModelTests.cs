@@ -94,6 +94,30 @@ public class TabViewModelTests
         Assert.Equal(2, tab.CurrentPage);
     }
 
+    [Fact]
+    public void TwoPageModeCommand_SetsExpectedFlags()
+    {
+        using var tab = new TabViewModel(CreateDocument(5));
+
+        tab.SetTwoPageModeCommand.Execute(null);
+
+        Assert.True(tab.IsTwoPageMode);
+        Assert.False(tab.IsContinuousMode);
+    }
+
+    [Theory]
+    [InlineData(90, 90)]
+    [InlineData(450, 90)]
+    [InlineData(-90, 270)]
+    public void RotationDegrees_NormalizesToRightAngle(int input, int expected)
+    {
+        using var tab = new TabViewModel(CreateDocument(1));
+
+        tab.RotationDegrees = input;
+
+        Assert.Equal(expected, tab.RotationDegrees);
+    }
+
     private static PdfDocument CreateDocument(int pageCount)
     {
         var pages = Enumerable.Range(0, pageCount)
