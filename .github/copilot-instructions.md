@@ -1,6 +1,6 @@
 # AcroPDF — Copilot Agent Instructions
 
-> 正式名称: **ArcPFDview**（コードネーム: **AcroPDF**）
+> 正式名称: **ArcPDFview**（コードネーム: **AcroPDF**）
 
 > このファイルは GitHub Copilot Agent (Codex) が自動的に参照する全体指示書です。  
 > 作業前に必ずこのファイルを読み、現在の進捗状況と実装ルールを把握してください。
