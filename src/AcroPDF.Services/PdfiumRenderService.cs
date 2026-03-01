@@ -70,7 +70,13 @@ public sealed class PdfiumRenderService : IPdfRenderService
             _openDocuments.TryAdd(documentHandle, 0);
 
             var pageCount = NativeMethods.FPDF_GetPageCount(documentHandle);
-            var pages = new List<PdfPage>(Math.Max(0, pageCount));
+            if (pageCount < 0)
+            {
+                CloseNativeDocument(documentHandle);
+                throw new InvalidOperationException($"Failed to get page count. PDFium returned {pageCount}.");
+            }
+
+            var pages = new List<PdfPage>(pageCount);
             for (var pageIndex = 0; pageIndex < pageCount; pageIndex++)
             {
                 ct.ThrowIfCancellationRequested();
@@ -238,14 +244,13 @@ public sealed class PdfiumRenderService : IPdfRenderService
     private void RemoveCacheForDocument(IntPtr handle)
     {
         var cacheKeyPrefix = $"{handle}:";
-        foreach (var entry in _pageCache)
-        {
-            if (!entry.Key.StartsWith(cacheKeyPrefix, StringComparison.Ordinal))
-            {
-                continue;
-            }
+        var matchedKeys = _pageCache.Keys
+            .Where(key => key.StartsWith(cacheKeyPrefix, StringComparison.Ordinal))
+            .ToArray();
 
-            if (_pageCache.TryRemove(entry.Key, out var bitmap))
+        foreach (var key in matchedKeys)
+        {
+            if (_pageCache.TryRemove(key, out var bitmap))
             {
                 bitmap.Dispose();
             }

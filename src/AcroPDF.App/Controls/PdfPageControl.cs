@@ -100,8 +100,8 @@ public sealed class PdfPageControl : SKCanvasView
         }
 
         var sourceRect = new SKRect(0, 0, _bitmap.Width, _bitmap.Height);
-        var scaledWidth = Math.Min(info.Width, _bitmap.Width * (float)ZoomLevel);
-        var scaledHeight = Math.Min(info.Height, _bitmap.Height * (float)ZoomLevel);
+        var scaledWidth = _bitmap.Width * (float)ZoomLevel;
+        var scaledHeight = _bitmap.Height * (float)ZoomLevel;
         var left = (info.Width - scaledWidth) / 2f;
         var top = (info.Height - scaledHeight) / 2f;
         var destinationRect = new SKRect(left, top, left + scaledWidth, top + scaledHeight);

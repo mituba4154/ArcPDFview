@@ -13,14 +13,24 @@ namespace AcroPDF.App.Views;
 /// </summary>
 public partial class MainWindow : Window
 {
-    private readonly IPdfRenderService _pdfRenderService = new PdfiumRenderService();
+    private readonly IPdfRenderService _pdfRenderService;
     private PdfDocument? _currentDocument;
 
     /// <summary>
     /// <see cref="MainWindow"/> の新しいインスタンスを初期化します。
     /// </summary>
     public MainWindow()
+        : this(new PdfiumRenderService())
     {
+    }
+
+    /// <summary>
+    /// <see cref="MainWindow"/> の新しいインスタンスを初期化します。
+    /// </summary>
+    /// <param name="pdfRenderService">PDF レンダリングサービス。</param>
+    public MainWindow(IPdfRenderService pdfRenderService)
+    {
+        _pdfRenderService = pdfRenderService ?? throw new ArgumentNullException(nameof(pdfRenderService));
         InitializeComponent();
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
@@ -33,7 +43,7 @@ public partial class MainWindow : Window
     /// <param name="filePath">開くファイルパス。</param>
     public void OpenFromStartupArgument(string filePath)
     {
-        _ = OpenFileAsync(filePath);
+        OpenFileWithoutAwait(filePath);
     }
 
     private async Task OpenFileAsync(string filePath)
@@ -70,17 +80,22 @@ public partial class MainWindow : Window
         }
 
         var pageBitmap = await _pdfRenderService.RenderPageAsync(firstPage, 1.0d).ConfigureAwait(true);
-        var pageControl = this.FindControl<PdfPageControl>("PageControl");
-        if (pageControl is null)
+        try
+        {
+            var pageControl = this.FindControl<PdfPageControl>("PageControl");
+            if (pageControl is null)
+            {
+                return;
+            }
+
+            pageControl.ZoomLevel = 1.0d;
+            pageControl.CurrentPage = firstPage.PageNumber;
+            pageControl.SetBitmap(pageBitmap);
+        }
+        finally
         {
             pageBitmap.Dispose();
-            return;
         }
-
-        pageControl.ZoomLevel = 1.0d;
-        pageControl.CurrentPage = firstPage.PageNumber;
-        pageControl.SetBitmap(pageBitmap);
-        pageBitmap.Dispose();
     }
 
     private void OnDragOver(object? sender, DragEventArgs e)
@@ -108,12 +123,21 @@ public partial class MainWindow : Window
             return;
         }
 
-        _ = OpenFileAsync(filePath);
+        OpenFileWithoutAwait(filePath);
     }
 
     private void OnClosed(object? sender, EventArgs e)
     {
         _currentDocument?.Dispose();
         _pdfRenderService.Dispose();
+    }
+
+    private void OpenFileWithoutAwait(string filePath)
+    {
+        _ = OpenFileAsync(filePath).ContinueWith(
+            static task => System.Diagnostics.Trace.TraceError(task.Exception?.GetBaseException().Message),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted,
+            TaskScheduler.Default);
     }
 }
