@@ -358,7 +358,8 @@ public sealed class PdfiumRenderService : IPdfRenderService
     {
         var widthPx = Math.Max(1, (int)Math.Ceiling(page.WidthPt * dpi / 72d));
         var heightPx = Math.Max(1, (int)Math.Ceiling(page.HeightPt * dpi / 72d));
-        var cacheKey = $"{page.DocumentHandle}:{page.PageIndex}:{dpi:F2}";
+        var roundedDpi = Math.Round(dpi, 1);
+        var cacheKey = $"{page.DocumentHandle}:{page.PageIndex}:{roundedDpi}";
 
         if (useCache && _pageCache.TryGetValue(cacheKey, out var cachedBitmap))
         {
@@ -389,13 +390,26 @@ public sealed class PdfiumRenderService : IPdfRenderService
             var renderedBitmap = new SKBitmap(widthPx, heightPx, SKColorType.Bgra8888, SKAlphaType.Premul);
             var destinationPtr = renderedBitmap.GetPixels();
             var destinationStride = renderedBitmap.RowBytes;
-            var rowLength = Math.Min(sourceStride, destinationStride);
-
-            var rowBuffer = new byte[rowLength];
-            for (var y = 0; y < heightPx; y++)
+            if (sourceStride == destinationStride)
             {
-                Marshal.Copy(IntPtr.Add(sourcePtr, y * sourceStride), rowBuffer, 0, rowLength);
-                Marshal.Copy(rowBuffer, 0, IntPtr.Add(destinationPtr, y * destinationStride), rowLength);
+                unsafe
+                {
+                    Buffer.MemoryCopy(
+                        (void*)sourcePtr,
+                        (void*)destinationPtr,
+                        heightPx * destinationStride,
+                        heightPx * sourceStride);
+                }
+            }
+            else
+            {
+                var rowLength = Math.Min(sourceStride, destinationStride);
+                var rowBuffer = new byte[rowLength];
+                for (var y = 0; y < heightPx; y++)
+                {
+                    Marshal.Copy(IntPtr.Add(sourcePtr, y * sourceStride), rowBuffer, 0, rowLength);
+                    Marshal.Copy(rowBuffer, 0, IntPtr.Add(destinationPtr, y * destinationStride), rowLength);
+                }
             }
 
             if (useCache)

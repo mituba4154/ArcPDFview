@@ -247,11 +247,17 @@
         <ScrollViewer x:Name="ContinuousScrollViewer"
                       HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Auto"
-                       IsVisible="False">
-          <StackPanel x:Name="ContinuousPagePanel"
-                      Margin="16"
-                      Spacing="16"
-                      HorizontalAlignment="Center" />
+                      ScrollChanged="OnContinuousScrollViewerScrollChanged"
+                      IsVisible="False">
+          <ItemsControl x:Name="ContinuousPageItemsControl"
+                        Margin="16"
+                        HorizontalAlignment="Center">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <VirtualizingStackPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+          </ItemsControl>
         </ScrollViewer>
         <Grid x:Name="SplitViewGrid"
               IsVisible="False"
