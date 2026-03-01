@@ -27,10 +27,19 @@ public partial class MainWindow : Window
     private const int ThumbnailWidthPx = 140;
     private const double A4AspectRatio = 0.707d;
     private readonly IPdfRenderService _pdfRenderService;
+    private readonly SearchService _searchService;
     private readonly List<TabViewModel> _tabs = [];
     private readonly Dictionary<PdfPageControl, (TabViewModel Tab, PdfPage Page)> _continuousPageMap = [];
+    private readonly Dictionary<TabViewModel, IReadOnlyList<PdfBookmarkItem>> _bookmarkMap = [];
+    private readonly Dictionary<(TabViewModel Tab, int PageNumber), IReadOnlyList<Avalonia.Rect>> _selectionHighlightMap = [];
+    private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _renderCts;
     private TabViewModel? _activeTab;
+    private bool _isSelectingText;
+    private TabViewModel? _selectionTab;
+    private PdfPage? _selectionPage;
+    private Point _selectionStartPdfPoint;
+    private string _selectedText = string.Empty;
 
     /// <summary>
     /// <see cref="MainWindow"/> の新しいインスタンスを初期化します。
@@ -47,8 +56,10 @@ public partial class MainWindow : Window
     public MainWindow(IPdfRenderService pdfRenderService)
     {
         _pdfRenderService = pdfRenderService ?? throw new ArgumentNullException(nameof(pdfRenderService));
+        _searchService = new SearchService();
         InitializeComponent();
         InitializeStaticStatusText();
+        InitializeTextSelectionContextMenu();
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
         Closed += OnClosed;
@@ -93,6 +104,14 @@ public partial class MainWindow : Window
 
         var tab = new TabViewModel(document);
         tab.ThumbnailUpdated += OnThumbnailUpdated;
+        var bookmarks = _searchService.GetBookmarks(document);
+        tab.Bookmarks.Clear();
+        foreach (var bookmark in bookmarks)
+        {
+            tab.Bookmarks.Add(bookmark);
+        }
+
+        _bookmarkMap[tab] = bookmarks;
         _tabs.Add(tab);
         ActivateTab(tab);
         _ = GenerateThumbnailsAsync(tab);
@@ -124,6 +143,8 @@ public partial class MainWindow : Window
         RebuildTabBar();
         UpdateToolbarState();
         RebuildThumbnailPanel();
+        RebuildBookmarkPanel();
+        UpdateSearchOverlayState();
         _ = RenderActiveTabAsync();
     }
 
@@ -177,6 +198,7 @@ public partial class MainWindow : Window
         PageControl.Width = bitmap.Width;
         PageControl.Height = bitmap.Height;
         PageControl.SetBitmap(bitmap);
+        ApplyHighlights(PageControl, tab, page);
         UpdateStatusBar();
     }
 
@@ -202,8 +224,11 @@ public partial class MainWindow : Window
             pageControl.SetBitmap(bitmap);
             pageControl.PointerMoved += OnContinuousPagePointerMoved;
             pageControl.PointerPressed += OnContinuousPagePointerPressed;
+            pageControl.PointerReleased += OnContinuousPagePointerReleased;
+            pageControl.ContextMenu = BuildTextSelectionContextMenu(pageControl);
 
             _continuousPageMap[pageControl] = (tab, page);
+            ApplyHighlights(pageControl, tab, page);
             ContinuousPagePanel.Children.Add(pageControl);
         }
 
@@ -371,6 +396,110 @@ public partial class MainWindow : Window
         }
     }
 
+    private void RebuildBookmarkPanel()
+    {
+        BookmarkPanel.Children.Clear();
+        if (_activeTab is null || !_bookmarkMap.TryGetValue(_activeTab, out var bookmarks))
+        {
+            return;
+        }
+
+        foreach (var bookmark in bookmarks)
+        {
+            AddBookmarkNode(BookmarkPanel, bookmark, 0);
+        }
+    }
+
+    private void AddBookmarkNode(Panel host, PdfBookmarkItem bookmark, int depth)
+    {
+        var expander = new Expander
+        {
+            IsExpanded = true,
+            Header = CreateBookmarkButton(bookmark, depth),
+            Margin = new Thickness(depth * 8, 2, 0, 2)
+        };
+
+        if (bookmark.Children.Count == 0)
+        {
+            host.Children.Add(CreateBookmarkButton(bookmark, depth));
+            return;
+        }
+
+        var childPanel = new StackPanel { Spacing = 2 };
+        foreach (var child in bookmark.Children)
+        {
+            AddBookmarkNode(childPanel, child, depth + 1);
+        }
+
+        expander.Content = childPanel;
+        host.Children.Add(expander);
+    }
+
+    private Button CreateBookmarkButton(PdfBookmarkItem bookmark, int depth)
+    {
+        var button = new Button
+        {
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(4, 2),
+            Margin = new Thickness(depth * 8, 0, 0, 0),
+            Foreground = new SolidColorBrush((Color)Application.Current!.FindResource("TextPrimary")!),
+            Content = string.IsNullOrWhiteSpace(bookmark.Title) ? "(無題)" : bookmark.Title
+        };
+        button.Click += (_, _) =>
+        {
+            if (_activeTab is null || bookmark.PageNumber <= 0)
+            {
+                return;
+            }
+
+            _activeTab.JumpToPage(bookmark.PageNumber);
+            RebuildThumbnailPanel();
+            _ = RenderActiveTabAsync();
+        };
+        return button;
+    }
+
+    private void ApplyHighlights(PdfPageControl control, TabViewModel tab, PdfPage page)
+    {
+        var pageResults = tab.SearchResults.Where(result => result.PageNumber == page.PageNumber).ToArray();
+        control.SearchHighlights = pageResults
+            .Select(result => ConvertBoundsToPixelRect(result.Bounds, page, tab.ZoomLevel))
+            .ToArray();
+
+        var currentResult = tab.CurrentSearchResult;
+        if (currentResult is SearchResult searchResult && searchResult.PageNumber == page.PageNumber)
+        {
+            control.CurrentSearchHighlight = ConvertBoundsToPixelRect(searchResult.Bounds, page, tab.ZoomLevel);
+        }
+        else
+        {
+            control.CurrentSearchHighlight = null;
+        }
+
+        if (_selectionHighlightMap.TryGetValue((tab, page.PageNumber), out var selectionRects))
+        {
+            control.SelectionHighlights = selectionRects;
+        }
+        else
+        {
+            control.SelectionHighlights = [];
+        }
+    }
+
+    private static Avalonia.Rect ConvertBoundsToPixelRect(PdfTextBounds bounds, PdfPage page, double zoomLevel)
+    {
+        var scale = (ScreenDpi * Math.Max(0.01d, zoomLevel)) / PdfDpi;
+        var left = Math.Min(bounds.Left, bounds.Right) * scale;
+        var right = Math.Max(bounds.Left, bounds.Right) * scale;
+        var topPdf = Math.Max(bounds.Top, bounds.Bottom);
+        var bottomPdf = Math.Min(bounds.Top, bounds.Bottom);
+        var y = (page.HeightPt - topPdf) * scale;
+        var height = Math.Max(1d, (topPdf - bottomPdf) * scale);
+        return new Avalonia.Rect(left, y, Math.Max(1d, right - left), height);
+    }
+
     private void UpdateToolbarState()
     {
         var tab = _activeTab;
@@ -413,6 +542,138 @@ public partial class MainWindow : Window
         PlatformStatusTextBlock.Text = $"{Environment.OSVersion.Platform} / .NET {Environment.Version}";
         ReadyStatusTextBlock.Text = "● 準備完了";
         UpdateStatusBar();
+    }
+
+    private void UpdateSearchOverlayState()
+    {
+        if (_activeTab is null)
+        {
+            SearchOverlay.IsVisible = false;
+            SearchTextBox.Text = string.Empty;
+            SearchCountTextBlock.Text = "0/0件";
+            return;
+        }
+
+        SearchOverlay.IsVisible = _activeTab.IsSearchVisible;
+        SearchTextBox.Text = _activeTab.SearchQuery;
+        CaseSensitiveSearchCheckBox.IsChecked = _activeTab.IsSearchCaseSensitive;
+        RegexSearchCheckBox.IsChecked = _activeTab.IsSearchRegex;
+        UpdateSearchCountText();
+    }
+
+    private async Task ExecuteSearchAsync()
+    {
+        CancelSearch();
+        if (_activeTab is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_activeTab.SearchQuery))
+        {
+            _activeTab.SetSearchResults([]);
+            UpdateSearchCountText();
+            _ = RenderActiveTabAsync();
+            return;
+        }
+
+        _searchCts = new CancellationTokenSource();
+        var token = _searchCts.Token;
+        try
+        {
+            var results = await _searchService.SearchAsync(
+                _activeTab.Document,
+                _activeTab.SearchQuery,
+                new SearchOptions(_activeTab.IsSearchCaseSensitive, _activeTab.IsSearchRegex),
+                token).ConfigureAwait(true);
+            _activeTab.SetSearchResults(results);
+            UpdateSearchCountText();
+            _ = RenderActiveTabAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            // 検索途中キャンセルは正常系。
+        }
+    }
+
+    private void UpdateSearchCountText()
+    {
+        var tab = _activeTab;
+        if (tab is null || tab.SearchResults.Count == 0)
+        {
+            SearchCountTextBlock.Text = "0/0件";
+            return;
+        }
+
+        SearchCountTextBlock.Text = $"{tab.CurrentSearchResultIndex + 1}/{tab.SearchResults.Count}件";
+    }
+
+    private void MoveToNextSearchResult(bool reverse)
+    {
+        if (_activeTab is null)
+        {
+            return;
+        }
+
+        if (reverse)
+        {
+            _activeTab.MoveToPreviousSearchResult();
+        }
+        else
+        {
+            _activeTab.MoveToNextSearchResult();
+        }
+
+        UpdateSearchCountText();
+        RebuildThumbnailPanel();
+        _ = RenderActiveTabAsync();
+    }
+
+    private void InitializeTextSelectionContextMenu()
+    {
+        PageControl.ContextMenu = BuildTextSelectionContextMenu(PageControl);
+    }
+
+    private ContextMenu BuildTextSelectionContextMenu(PdfPageControl control)
+    {
+        var copy = new MenuItem { Header = "コピー" };
+        copy.Click += async (_, _) => await CopySelectedTextAsync().ConfigureAwait(true);
+
+        var highlight = new MenuItem { Header = "ハイライト" };
+        var underline = new MenuItem { Header = "下線を引く" };
+        var strike = new MenuItem { Header = "取り消し線" };
+        var comment = new MenuItem { Header = "コメントを追加" };
+        var link = new MenuItem { Header = "リンクを追加" };
+        var searchSelected = new MenuItem { Header = "選択テキストを検索" };
+        searchSelected.Click += (_, _) =>
+        {
+            if (_activeTab is null || string.IsNullOrWhiteSpace(_selectedText))
+            {
+                return;
+            }
+
+            _activeTab.IsSearchVisible = true;
+            _activeTab.SearchQuery = _selectedText.Trim();
+            UpdateSearchOverlayState();
+            _ = ExecuteSearchAsync();
+        };
+
+        return new ContextMenu
+        {
+            PlacementTarget = control,
+            ItemsSource = new object[]
+            {
+                copy,
+                highlight,
+                underline,
+                strike,
+                new Separator(),
+                comment,
+                link,
+                new Separator(),
+                searchSelected
+            }
+        };
     }
 
     private void SetEmptyStateVisible(bool visible)
@@ -461,6 +722,11 @@ public partial class MainWindow : Window
 
         tab.ThumbnailUpdated -= OnThumbnailUpdated;
         tab.CancelThumbnailGeneration();
+        _bookmarkMap.Remove(tab);
+        foreach (var key in _selectionHighlightMap.Keys.Where(key => ReferenceEquals(key.Tab, tab)).ToArray())
+        {
+            _selectionHighlightMap.Remove(key);
+        }
         _pdfRenderService.Close(tab.Document);
         tab.Dispose();
 
@@ -528,6 +794,13 @@ public partial class MainWindow : Window
         _renderCts = null;
     }
 
+    private void CancelSearch()
+    {
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = null;
+    }
+
     private void UpdateMouseCoordinates(TabViewModel tab, PdfPage page, Point position, double zoom)
     {
         var x = (position.X * PdfDpi) / (ScreenDpi * Math.Max(zoom, 0.01d));
@@ -535,6 +808,37 @@ public partial class MainWindow : Window
         tab.MouseX = Math.Clamp(x, 0, page.WidthPt);
         tab.MouseY = Math.Clamp(y, 0, page.HeightPt);
         UpdateStatusBar();
+    }
+
+    private static PdfTextBounds CreateBoundsFromDrag(Point startPdfPoint, Point currentPdfPoint)
+    {
+        var left = Math.Min(startPdfPoint.X, currentPdfPoint.X);
+        var right = Math.Max(startPdfPoint.X, currentPdfPoint.X);
+        var top = Math.Max(startPdfPoint.Y, currentPdfPoint.Y);
+        var bottom = Math.Min(startPdfPoint.Y, currentPdfPoint.Y);
+        return new PdfTextBounds(left, top, right, bottom);
+    }
+
+    private async Task UpdateTextSelectionAsync(TabViewModel tab, PdfPage page, Point currentPdfPoint)
+    {
+        var bounds = CreateBoundsFromDrag(_selectionStartPdfPoint, currentPdfPoint);
+        var selection = await _searchService.SelectTextAsync(page, bounds).ConfigureAwait(true);
+        _selectedText = selection.Text.Trim();
+        _selectionHighlightMap[(tab, page.PageNumber)] = selection.Bounds
+            .Select(item => ConvertBoundsToPixelRect(item, page, tab.ZoomLevel))
+            .ToArray();
+        _ = RenderActiveTabAsync();
+    }
+
+    private async Task CopySelectedTextAsync()
+    {
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        if (clipboard is null || string.IsNullOrWhiteSpace(_selectedText))
+        {
+            return;
+        }
+
+        await clipboard.SetTextAsync(_selectedText).ConfigureAwait(true);
     }
 
     private void OnThumbnailUpdated(int _)
@@ -573,6 +877,7 @@ public partial class MainWindow : Window
     private void OnClosed(object? sender, EventArgs e)
     {
         CancelRender();
+        CancelSearch();
         foreach (var tab in _tabs.ToArray())
         {
             CloseTab(tab);
@@ -592,6 +897,12 @@ public partial class MainWindow : Window
         var page = tab.Document.Pages[tab.CurrentPage - 1];
         var point = e.GetPosition(PageControl);
         UpdateMouseCoordinates(tab, page, point, tab.ZoomLevel);
+
+        if (_isSelectingText && ReferenceEquals(tab, _selectionTab) && ReferenceEquals(page, _selectionPage))
+        {
+            var currentPdfPoint = new Point(tab.MouseX, tab.MouseY);
+            _ = UpdateTextSelectionAsync(tab, page, currentPdfPoint);
+        }
     }
 
     private void OnContinuousPagePointerMoved(object? sender, PointerEventArgs e)
@@ -603,6 +914,12 @@ public partial class MainWindow : Window
 
         var point = e.GetPosition(control);
         UpdateMouseCoordinates(info.Tab, info.Page, point, info.Tab.ZoomLevel);
+
+        if (_isSelectingText && ReferenceEquals(info.Tab, _selectionTab) && ReferenceEquals(info.Page, _selectionPage))
+        {
+            var currentPdfPoint = new Point(info.Tab.MouseX, info.Tab.MouseY);
+            _ = UpdateTextSelectionAsync(info.Tab, info.Page, currentPdfPoint);
+        }
     }
 
     private void OnContinuousPagePointerPressed(object? sender, PointerPressedEventArgs e)
@@ -616,6 +933,57 @@ public partial class MainWindow : Window
         RebuildThumbnailPanel();
         UpdateToolbarState();
         UpdateStatusBar();
+
+        if (e.GetCurrentPoint(control).Properties.IsLeftButtonPressed)
+        {
+            var point = e.GetPosition(control);
+            UpdateMouseCoordinates(info.Tab, info.Page, point, info.Tab.ZoomLevel);
+            _isSelectingText = true;
+            _selectionTab = info.Tab;
+            _selectionPage = info.Page;
+            _selectionStartPdfPoint = new Point(info.Tab.MouseX, info.Tab.MouseY);
+            _selectedText = string.Empty;
+            _selectionHighlightMap.Remove((info.Tab, info.Page.PageNumber));
+        }
+    }
+
+    private void OnContinuousPagePointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (!_isSelectingText)
+        {
+            return;
+        }
+
+        _isSelectingText = false;
+    }
+
+    private void OnSinglePagePointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        var tab = _activeTab;
+        if (tab is null || tab.IsContinuousMode || !e.GetCurrentPoint(PageControl).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        var page = tab.Document.Pages[tab.CurrentPage - 1];
+        var point = e.GetPosition(PageControl);
+        UpdateMouseCoordinates(tab, page, point, tab.ZoomLevel);
+        _isSelectingText = true;
+        _selectionTab = tab;
+        _selectionPage = page;
+        _selectionStartPdfPoint = new Point(tab.MouseX, tab.MouseY);
+        _selectedText = string.Empty;
+        _selectionHighlightMap.Remove((tab, page.PageNumber));
+    }
+
+    private void OnSinglePagePointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (!_isSelectingText)
+        {
+            return;
+        }
+
+        _isSelectingText = false;
     }
 
     private async void OnOpenFileClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -626,6 +994,50 @@ public partial class MainWindow : Window
     private async void OnAddTabClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         await OpenFileFromPickerAsync().ConfigureAwait(true);
+    }
+
+    private async void OnSearchTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        if (_activeTab is null)
+        {
+            return;
+        }
+
+        _activeTab.SearchQuery = SearchTextBox.Text ?? string.Empty;
+        await ExecuteSearchAsync().ConfigureAwait(true);
+    }
+
+    private async void OnSearchOptionChanged(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (_activeTab is null)
+        {
+            return;
+        }
+
+        _activeTab.IsSearchCaseSensitive = CaseSensitiveSearchCheckBox.IsChecked == true;
+        _activeTab.IsSearchRegex = RegexSearchCheckBox.IsChecked == true;
+        await ExecuteSearchAsync().ConfigureAwait(true);
+    }
+
+    private void OnSearchPreviousClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        MoveToNextSearchResult(reverse: true);
+    }
+
+    private void OnSearchNextClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        MoveToNextSearchResult(reverse: false);
+    }
+
+    private void OnSearchCloseClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (_activeTab is null)
+        {
+            return;
+        }
+
+        _activeTab.IsSearchVisible = false;
+        UpdateSearchOverlayState();
     }
 
     private void OnFirstPageClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -797,6 +1209,29 @@ public partial class MainWindow : Window
             return;
         }
 
+        if ((e.KeyModifiers & KeyModifiers.Control) != 0 && e.Key == Key.F)
+        {
+            _activeTab.IsSearchVisible = true;
+            UpdateSearchOverlayState();
+            SearchTextBox.Focus();
+            e.Handled = true;
+            return;
+        }
+
+        if ((e.KeyModifiers & KeyModifiers.Control) != 0 && e.Key == Key.C)
+        {
+            _ = CopySelectedTextAsync();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.F3)
+        {
+            MoveToNextSearchResult((e.KeyModifiers & KeyModifiers.Shift) != 0);
+            e.Handled = true;
+            return;
+        }
+
         if ((e.KeyModifiers & KeyModifiers.Control) != 0)
         {
             return;
@@ -816,6 +1251,11 @@ public partial class MainWindow : Window
             case Key.End:
                 _activeTab.MoveLastPageCommand.Execute(null);
                 break;
+            case Key.Escape:
+                _activeTab.IsSearchVisible = false;
+                UpdateSearchOverlayState();
+                e.Handled = true;
+                return;
             default:
                 return;
         }

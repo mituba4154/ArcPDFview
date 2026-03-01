@@ -237,21 +237,21 @@ PDFium 座標系:
 
 | # | タスク | 状態 | 備考 |
 |---|--------|------|------|
-| 2-1 | `ISearchService` / `SearchService` | ⬜ | `FPDFText_FindStart` API |
-| 2-2 | 検索バー UI (Ctrl+F) | ⬜ | 右上オーバーレイ |
-| 2-3 | マッチハイライト（黄色） | ⬜ | |
-| 2-4 | 現在マッチハイライト（青） | ⬜ | |
-| 2-5 | 検索件数表示 | ⬜ | |
-| 2-6 | F3 / Shift+F3 ナビゲーション | ⬜ | |
-| 2-7 | 大文字小文字区別オプション | ⬜ | |
-| 2-8 | 正規表現検索 | ⬜ | |
-| 2-9 | PDF ブックマーク取得 | ⬜ | `FPDF_Bookmark_*` API |
-| 2-10 | 目次ツリー表示 | ⬜ | |
-| 2-11 | 目次クリックでジャンプ | ⬜ | |
-| 2-12 | テキスト選択モード | ⬜ | `FPDFText_GetCharBox` API |
-| 2-13 | マウスドラッグで範囲選択 | ⬜ | |
-| 2-14 | Ctrl+C でコピー | ⬜ | |
-| 2-15 | 右クリックコンテキストメニュー | ⬜ | wireframe 参照 |
+| 2-1 | `ISearchService` / `SearchService` | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/Interfaces/ISearchService.cs`、`src/AcroPDF.Services/SearchService.cs` |
+| 2-2 | 検索バー UI (Ctrl+F) | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 2-3 | マッチハイライト（黄色） | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Controls/PdfPageControl.cs` |
+| 2-4 | 現在マッチハイライト（青） | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Controls/PdfPageControl.cs` |
+| 2-5 | 検索件数表示 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 2-6 | F3 / Shift+F3 ナビゲーション | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 2-7 | 大文字小文字区別オプション | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 2-8 | 正規表現検索 | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/SearchService.cs` |
+| 2-9 | PDF ブックマーク取得 | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/SearchService.cs` |
+| 2-10 | 目次ツリー表示 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 2-11 | 目次クリックでジャンプ | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 2-12 | テキスト選択モード | ✅ | 2026-03-01 完了。`src/AcroPDF.Services/SearchService.cs`、`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 2-13 | マウスドラッグで範囲選択 | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 2-14 | Ctrl+C でコピー | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
+| 2-15 | 右クリックコンテキストメニュー | ✅ | 2026-03-01 完了。`src/AcroPDF.App/Views/MainWindow.axaml.cs` |
 | 2-16 | 分割ビュー UI | ⬜ | |
 | 2-17 | 各ペイン独立操作 | ⬜ | |
 | 2-18 | 分割ラインのリサイズ | ⬜ | |

@@ -1,4 +1,5 @@
 using AcroPDF.Services;
+using AcroPDF.Core.Models;
 
 namespace AcroPDF.Services.Tests;
 
@@ -13,5 +14,16 @@ public class PdfiumRenderServiceTests
         var actual = PdfiumRenderService.ClampZoomLevel(input);
 
         Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public async Task SearchAsync_EmptyQuery_ReturnsEmpty()
+    {
+        var service = new SearchService();
+        using var document = new PdfDocument("sample.pdf", IntPtr.Zero, [], _ => { });
+
+        var result = await service.SearchAsync(document, string.Empty, new SearchOptions(false, false));
+
+        Assert.Empty(result);
     }
 }
