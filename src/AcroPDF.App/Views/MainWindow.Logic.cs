@@ -184,6 +184,16 @@ public partial class MainWindow : Window
                     return null;
                 }
             }
+            catch (OperationCanceledException)
+            {
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceError($"Failed to open PDF '{filePath}': {ex}");
+                await ShowOpenFileErrorDialogAsync(filePath, ex).ConfigureAwait(true);
+                return null;
+            }
         }
 
         if (document is null)
@@ -1881,6 +1891,46 @@ public partial class MainWindow : Window
         SecondarySplitPageControl.SetBitmap(null);
         ClearContinuousPageItems();
         FloatingAnnotationToolbar.IsVisible = false;
+    }
+
+    private async Task ShowOpenFileErrorDialogAsync(string filePath, Exception ex)
+    {
+        var title = "PDFを開けませんでした";
+        var reason = ex switch
+        {
+            DllNotFoundException => "PDFレンダリングに必要なネイティブライブラリが見つかりません。インストーラーに同梱漏れがないか確認してください。",
+            BadImageFormatException => "PDFレンダリング用ライブラリのアーキテクチャが実行環境と一致していません。",
+            EntryPointNotFoundException => "PDFレンダリング用ライブラリのバージョン不整合が検出されました。",
+            FileNotFoundException => "指定されたPDFファイルが見つかりません。",
+            InvalidOperationException => ex.Message,
+            _ => "PDFの読み込み中に予期しないエラーが発生しました。"
+        };
+
+        var panel = new StackPanel { Margin = new Thickness(16), Spacing = 10 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = reason,
+            TextWrapping = TextWrapping.Wrap
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"対象ファイル: {filePath}",
+            Foreground = new SolidColorBrush(Colors.Gainsboro),
+            TextWrapping = TextWrapping.Wrap
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"詳細: {ex.GetBaseException().Message}",
+            Foreground = new SolidColorBrush(Colors.Gainsboro),
+            TextWrapping = TextWrapping.Wrap
+        });
+
+        var ok = new Button { Content = "OK", Width = 88, HorizontalAlignment = HorizontalAlignment.Right };
+        var dialog = CreateStyledDialog(title, DialogSeverity.Error, 640, 280);
+        ok.Click += (_, _) => dialog.Close();
+        panel.Children.Add(ok);
+        dialog.Content = panel;
+        await dialog.ShowDialog(this).ConfigureAwait(true);
     }
 
     private async Task OpenFileFromPickerAsync()
