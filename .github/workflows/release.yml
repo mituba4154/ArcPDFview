@@ -108,7 +108,7 @@ jobs:
           cp -r publish/linux-x64/* AppDir/usr/bin/
           cp icon-256.png AppDir/arcpdfview.png
           printf '[Desktop Entry]\nType=Application\nName=ArcPDFview\nExec=AcroPDF.App\nIcon=arcpdfview\nCategories=Office;\n' \
-            > AppDir/ArcPDFview.desktop
+            > AppDir/arcpdfview.desktop
           printf '#!/usr/bin/env bash\nexec "$(dirname "$0")/usr/bin/AcroPDF.App" "$@"\n' \
             > AppDir/AppRun
           chmod +x AppDir/AppRun
