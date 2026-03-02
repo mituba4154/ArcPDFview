@@ -6,6 +6,7 @@ A lightweight PDF viewer for Windows and Linux.
 
 v0.5.0
 
+# 動作しません ビルドに失敗しているので
 ---
 
 ## 主な機能 / Features
