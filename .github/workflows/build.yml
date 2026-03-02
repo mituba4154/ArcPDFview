@@ -80,15 +80,7 @@ jobs:
           sudo apt-get install -y libx11-dev libice-dev libsm-dev libfontconfig1 libglib2.0-dev libnss3
 
       - name: Publish
-        run: |
-          dotnet publish src/AcroPDF.App/AcroPDF.App.csproj \
-            -c Release \
-            -r ${{ matrix.rid }} \
-            --self-contained \
-            -p:PublishSingleFile=true \
-            -p:IncludeNativeLibrariesForSelfExtract=true \
-            -p:IncludeAllContentForSelfExtract=true \
-            -o ./publish/${{ matrix.rid }}
+        run: dotnet publish src/AcroPDF.App/AcroPDF.App.csproj -c Release -r ${{ matrix.rid }} --self-contained -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:IncludeNativeLibrariesForSelfExtract=true -p:IncludeAllContentForSelfExtract=true -o ./publish/${{ matrix.rid }}
 
       - name: Verify published binary exists
         shell: bash
