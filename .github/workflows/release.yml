@@ -32,6 +32,13 @@ jobs:
             -p:IncludeAllContentForSelfExtract=true `
             -o publish/win-x64
 
+      - name: Verify Windows single-file bundle settings
+        shell: pwsh
+        run: |
+          if (!(Test-Path 'publish/win-x64/AcroPDF.App.exe')) { throw 'AcroPDF.App.exe was not generated.' }
+          $files = Get-ChildItem -File publish/win-x64
+          Write-Host "Windows publish files:" ($files | Select-Object -ExpandProperty Name)
+
       - name: Install WiX v4
         shell: pwsh
         run: dotnet tool install --global wix --version "4.*"
@@ -76,7 +83,20 @@ jobs:
           sudo apt-get install -y libx11-dev libice-dev libsm-dev libfontconfig1 libglib2.0-dev libnss3 icoutils
 
       - name: Publish self-contained (linux-x64)
-        run: dotnet publish src/AcroPDF.App/AcroPDF.App.csproj -c Release -r linux-x64 --self-contained -o publish/linux-x64
+        run: |
+          dotnet publish src/AcroPDF.App/AcroPDF.App.csproj \
+            -c Release \
+            -r linux-x64 \
+            --self-contained \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:IncludeAllContentForSelfExtract=true \
+            -o publish/linux-x64
+
+      - name: Verify Linux single-file bundle settings
+        run: |
+          test -f publish/linux-x64/AcroPDF.App || { echo 'AcroPDF.App was not generated.' >&2; exit 1; }
+          echo "Linux publish files:" && ls -1 publish/linux-x64
 
       - name: Prepare Linux icon asset
         run: |
@@ -110,6 +130,12 @@ jobs:
           printf 'Package: arcpdfview\nVersion: %s\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: ArcPDFview\nDepends: libfontconfig1, libfreetype6, libglib2.0-0, libice6, libnss3, libsm6, libx11-6, libxcursor1, libxext6, libxi6, libxrandr2, libxrender1\nDescription: ArcPDFview lightweight PDF viewer\n' \
             "${GITHUB_REF_NAME#v}" > package-root/DEBIAN/control
           dpkg-deb --build package-root ArcPDFview-linux-x64.deb
+
+      - name: Verify .deb payload
+        run: |
+          dpkg-deb -c ArcPDFview-linux-x64.deb | tee deb-contents.txt
+          grep -q './opt/arcpdfview/AcroPDF.App' deb-contents.txt
+          grep -q './usr/bin/arcpdfview' deb-contents.txt
 
       - name: Build AppImage
         run: |

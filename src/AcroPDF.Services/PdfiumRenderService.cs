@@ -34,6 +34,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
     private const int FormFieldTypeListBox = 5;
     private const int FormFieldTypeTextField = 6;
     private const int FormFieldTypeSignature = 7;
+    private const int PdfiumWorkerStackSizeBytes = 256 * 1024 * 1024;
 
     private static readonly object InitLock = new();
     private static readonly AsyncLocal<FileStream?> SaveStreamContext = new();
@@ -752,9 +753,10 @@ public sealed class PdfiumRenderService : IPdfRenderService
     }
 
     /// <summary>
-    /// PDFium の呼び出しを専用スレッド（64MB スタック）で実行します。
+    /// PDFium の呼び出しを専用スレッド（256MB スタック）で実行します。
     /// スレッドプールの既定スタックサイズ (1MB) では PDFium の深い再帰で
     /// スタックオーバーフローが発生する可能性があるため、大きいスタックを確保します。
+    /// 一部の複雑な PDF では 64MB でも不足するため、余裕を持たせています。
     /// </summary>
     private static Task<T> RunOnPdfiumThread<T>(Func<T> func)
     {
@@ -769,7 +771,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
             {
                 tcs.SetException(ex);
             }
-        }, 64 * 1024 * 1024)
+        }, PdfiumWorkerStackSizeBytes)
         {
             IsBackground = true
         };
@@ -778,7 +780,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
     }
 
     /// <summary>
-    /// PDFium の呼び出しを専用スレッド（64MB スタック）で実行します（戻り値なし版）。
+    /// PDFium の呼び出しを専用スレッド（256MB スタック）で実行します（戻り値なし版）。
     /// </summary>
     private static Task RunOnPdfiumThread(Action action)
     {
@@ -794,7 +796,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
             {
                 tcs.SetException(ex);
             }
-        }, 64 * 1024 * 1024)
+        }, PdfiumWorkerStackSizeBytes)
         {
             IsBackground = true
         };
