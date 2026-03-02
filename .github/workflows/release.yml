@@ -102,12 +102,12 @@ jobs:
           mkdir -p package-root/usr/share/icons/hicolor/256x256/apps
           cp -r publish/linux-x64/* package-root/opt/arcpdfview/
           cp icon-256.png package-root/usr/share/icons/hicolor/256x256/apps/arcpdfview.png
-          printf '#!/bin/bash\nexec /opt/arcpdfview/AcroPDF.App "$@"\n' \
+          printf '#!/bin/bash\nset -euo pipefail\nextract_root="${XDG_CACHE_HOME:-$HOME/.cache}/arcpdfview/.net"\nmkdir -p "$extract_root"\nexport DOTNET_BUNDLE_EXTRACT_BASE_DIR="$extract_root"\nexec /opt/arcpdfview/AcroPDF.App "$@"\n' \
             > package-root/usr/bin/arcpdfview
           chmod +x package-root/usr/bin/arcpdfview
           printf '[Desktop Entry]\nName=ArcPDFview\nComment=Lightweight PDF Viewer\nExec=arcpdfview\nIcon=arcpdfview\nType=Application\nCategories=Office;Viewer;\nMimeType=application/pdf;\n' \
             > package-root/usr/share/applications/arcpdfview.desktop
-          printf 'Package: arcpdfview\nVersion: %s\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: ArcPDFview\nDepends: libfontconfig1, libglib2.0-0\nDescription: ArcPDFview lightweight PDF viewer\n' \
+          printf 'Package: arcpdfview\nVersion: %s\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: ArcPDFview\nDepends: libfontconfig1, libfreetype6, libglib2.0-0, libice6, libnss3, libsm6, libx11-6, libxcursor1, libxext6, libxi6, libxrandr2, libxrender1\nDescription: ArcPDFview lightweight PDF viewer\n' \
             "${GITHUB_REF_NAME#v}" > package-root/DEBIAN/control
           dpkg-deb --build package-root ArcPDFview-linux-x64.deb
 
@@ -132,7 +132,7 @@ jobs:
           EOF
 
           cp AppDir/arcpdfview.desktop AppDir/usr/share/applications/arcpdfview.desktop
-          printf '#!/usr/bin/env bash\nexec "$(dirname "$0")/usr/bin/AcroPDF.App" "$@"\n' \
+          printf '#!/usr/bin/env bash\nset -euo pipefail\nextract_root="${XDG_CACHE_HOME:-$HOME/.cache}/arcpdfview/.net"\nmkdir -p "$extract_root"\nexport DOTNET_BUNDLE_EXTRACT_BASE_DIR="$extract_root"\nexec "$(dirname "$0")/usr/bin/AcroPDF.App" "$@"\n' \
             > AppDir/AppRun
           chmod +x AppDir/AppRun
           wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage \
