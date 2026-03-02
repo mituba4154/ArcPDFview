@@ -156,9 +156,7 @@ public class PdfiumRenderServiceTests
     [Fact]
     public async Task RunOnPdfiumThread_ReturnsResult()
     {
-        var genericMethod = typeof(PdfiumRenderService).GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
-            .First(m => m.Name == "RunOnPdfiumThread" && m.IsGenericMethod)
-            .MakeGenericMethod(typeof(int));
+        var genericMethod = GetRunOnPdfiumThreadGeneric<int>();
 
         var task = (Task<int>)genericMethod.Invoke(null, [new Func<int>(() => 42)])!;
         var result = await task;
@@ -169,9 +167,7 @@ public class PdfiumRenderServiceTests
     [Fact]
     public async Task RunOnPdfiumThread_PropagatesException()
     {
-        var genericMethod = typeof(PdfiumRenderService).GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
-            .First(m => m.Name == "RunOnPdfiumThread" && m.IsGenericMethod)
-            .MakeGenericMethod(typeof(int));
+        var genericMethod = GetRunOnPdfiumThreadGeneric<int>();
 
         var task = (Task<int>)genericMethod.Invoke(null, [new Func<int>(() => throw new InvalidOperationException("test error"))])!;
 
@@ -222,5 +218,12 @@ public class PdfiumRenderServiceTests
         await task;
 
         Assert.True(executed);
+    }
+
+    private static MethodInfo GetRunOnPdfiumThreadGeneric<T>()
+    {
+        return typeof(PdfiumRenderService).GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+            .First(m => m.Name == "RunOnPdfiumThread" && m.IsGenericMethod)
+            .MakeGenericMethod(typeof(T));
     }
 }

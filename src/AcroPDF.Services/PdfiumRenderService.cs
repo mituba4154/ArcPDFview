@@ -1641,6 +1641,9 @@ public sealed class PdfiumRenderService : IPdfRenderService
 
             _disposed = true;
             _stream.Dispose();
+
+            // アンマネージド FPDF_FILEACCESS を先に解放し、次に GCHandle を解放する。
+            // FPDF_FILEACCESS 内の m_Param が GCHandle を指しているため、この順序を守る。
             if (_accessInfoPtr != IntPtr.Zero)
             {
                 Marshal.FreeHGlobal(_accessInfoPtr);
