@@ -105,10 +105,23 @@ jobs:
       - name: Build AppImage
         run: |
           mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
           cp -r publish/linux-x64/* AppDir/usr/bin/
+          cp icon-256.png AppDir/usr/share/icons/hicolor/256x256/apps/arcpdfview.png
           cp icon-256.png AppDir/arcpdfview.png
-          printf '[Desktop Entry]\nType=Application\nName=ArcPDFview\nExec=AcroPDF.App\nIcon=arcpdfview\nCategories=Office;\n' \
-            > AppDir/arcpdfview.desktop
+          cp icon-256.png AppDir/.DirIcon
+          cat > AppDir/arcpdfview.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=ArcPDFview
+Comment=Lightweight PDF Viewer
+Exec=AcroPDF.App
+Icon=arcpdfview
+Categories=Office;Viewer;
+Terminal=false
+EOF
+          cp AppDir/arcpdfview.desktop AppDir/usr/share/applications/arcpdfview.desktop
           printf '#!/usr/bin/env bash\nexec "$(dirname "$0")/usr/bin/AcroPDF.App" "$@"\n' \
             > AppDir/AppRun
           chmod +x AppDir/AppRun
