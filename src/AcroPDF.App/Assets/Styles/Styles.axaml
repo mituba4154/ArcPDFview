@@ -1,34 +1,42 @@
-<Styles xmlns="https://github.com/avaloniaui">
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <Style Selector="Button, ToggleButton">
-    <Setter Property="Background" Value="{DynamicResource BgPanelBrush}" />
+    <Setter Property="Background" Value="{DynamicResource BgPanel2Brush}" />
     <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="4" />
-    <Setter Property="Padding" Value="8,3" />
-    <Setter Property="MinHeight" Value="28" />
+    <Setter Property="Padding" Value="10,4" />
   </Style>
 
   <Style Selector="Button:pointerover, ToggleButton:pointerover">
-    <Setter Property="Background" Value="{DynamicResource BgPanel2Brush}" />
+    <Setter Property="Background" Value="{DynamicResource BgToolbarBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderLightBrush}" />
+  </Style>
+
+  <Style Selector="Button:pressed, ToggleButton:pressed">
+    <Setter Property="Background" Value="{DynamicResource BgDarkBrush}" />
   </Style>
 
   <Style Selector="ToggleButton:checked">
     <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
-    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Accent2Brush}" />
   </Style>
 
   <Style Selector="TextBox, ComboBox">
-    <Setter Property="Background" Value="{DynamicResource BgPanelBrush}" />
+    <Setter Property="Background" Value="{DynamicResource BgPanel2Brush}" />
     <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="4" />
-    <Setter Property="MinHeight" Value="28" />
   </Style>
 
-  <Style Selector="Separator">
-    <Setter Property="Background" Value="{DynamicResource BorderBrush}" />
+  <Style Selector="TabItem">
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    <Setter Property="Background" Value="{DynamicResource BgPanelBrush}" />
+  </Style>
+
+  <Style Selector="TabItem:selected">
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="Background" Value="{DynamicResource BgPanel2Brush}" />
   </Style>
 </Styles>

@@ -420,7 +420,7 @@ public partial class MainWindow : Window
                 Background = new SolidColorBrush((Color)Application.Current!.FindResource("BgPanel2")!),
                 BorderBrush = new SolidColorBrush((Color)Application.Current!.FindResource("Border")!),
                 BorderThickness = new Thickness(1),
-                HorizontalAlignment = HorizontalAlignment.Center
+                HorizontalAlignment = HorizontalAlignment.Left
             };
             host.Child = new Border
             {
@@ -508,7 +508,7 @@ public partial class MainWindow : Window
             {
                 ZoomLevel = 1.0d,
                 CurrentPage = state.Page.PageNumber,
-                HorizontalAlignment = HorizontalAlignment.Center
+                HorizontalAlignment = HorizontalAlignment.Left
             };
             pageControl.Width = GetBitmapDisplaySize(bitmap.Width, renderMultiplier);
             pageControl.Height = GetBitmapDisplaySize(bitmap.Height, renderMultiplier);
