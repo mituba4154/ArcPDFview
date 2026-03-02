@@ -1,12 +1,10 @@
 # ArcPDFview (AcroPDF)
 
-Windows / Linux 向けの軽量 PDF ビューワーです。サブスクリプション不要・広告なしで利用できます。
+Windows / Linux 向けの軽量? PDF ビューワーです。サブスクリプション不要・広告なしで利用できます。
 
 A lightweight PDF viewer for Windows and Linux.
 
-v0.5.0
-
-# 動作しません ビルドに失敗しているので
+v0.9.0
 ---
 
 ## 主な機能 / Features
@@ -66,7 +64,7 @@ v0.5.0
 - 多言語 UI（日本語・英語） / Multilingual UI (Japanese and English)
 - キーボード完全操作・スクリーンリーダー対応・ハイコントラストモード / Full keyboard navigation, screen reader support, high contrast mode
 - 豊富なキーボードショートカット / Extensive keyboard shortcuts
-
+-初回起動時のみ重いです
 ---
 
 ## 技術スタック / Tech Stack
