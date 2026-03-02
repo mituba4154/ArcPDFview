@@ -3,7 +3,6 @@ name: Build & Test
 on:
   push:
     branches: [ main, develop ]
-    tags: [ 'v*.*.*' ]      
   pull_request:
     branches: [ main ]
 
@@ -12,7 +11,6 @@ jobs:
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest]
-
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -24,7 +22,6 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      # Linux のみ: Avalonia に必要な依存ライブラリと xvfb を追加
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -54,9 +51,7 @@ jobs:
             Stop-Process -Id $process.Id
             exit 0
           }
-          if ($process.ExitCode -ne 0) {
-            exit $process.ExitCode
-          }
+          if ($process.ExitCode -ne 0) { exit $process.ExitCode }
 
   package:
     needs: build
@@ -67,7 +62,6 @@ jobs:
             rid: win-x64
           - os: ubuntu-latest
             rid: linux-x64
-
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -88,27 +82,7 @@ jobs:
       - name: Publish
         run: dotnet publish src/AcroPDF.App/AcroPDF.App.csproj -c Release -r ${{ matrix.rid }} --self-contained -o ./publish/${{ matrix.rid }}
 
-      - name: Install WiX v4 (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: dotnet tool install --global wix --version 4.*
-
-      - name: Build MSI (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
-          wix build installer/ArcPDFview.wxs -arch x64 -bindpath PublishDir=publish/${{ matrix.rid }} -out publish/${{ matrix.rid }}/ArcPDFview-${{ matrix.rid }}.msi
-
-      - name: Upload artifact (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ArcPDFview-${{ matrix.rid }}
-          path: ./publish/${{ matrix.rid }}
-
-      - name: Upload artifact (Linux)
-        if: runner.os == 'Linux'
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ArcPDFview-${{ matrix.rid }}

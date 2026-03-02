@@ -25,14 +25,17 @@ jobs:
 
       - name: Install WiX v4
         shell: pwsh
-        run: dotnet tool install --global wix --version 4.*
+        run: dotnet tool install --global wix --version "4.*"
 
-      - name: Build MSI package
+      - name: Build MSI
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path artifacts -Force | Out-Null
           $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
-          wix build installer/ArcPDFview.wxs -arch x64 -bindpath PublishDir=publish/win-x64 -out artifacts/ArcPDFview-win-x64.msi
+          New-Item -ItemType Directory -Path artifacts -Force | Out-Null
+          wix build installer/ArcPDFview.wxs `
+            -arch x64 `
+            -bindpath PublishDir=publish/win-x64/ `
+            -out artifacts/ArcPDFview-win-x64.msi
 
       - name: Prepare Windows artifacts
         shell: pwsh
@@ -70,37 +73,31 @@ jobs:
         run: |
           mkdir -p package-root/DEBIAN
           mkdir -p package-root/opt/arcpdfview
+          mkdir -p package-root/usr/bin
+          mkdir -p package-root/usr/share/applications
           cp -r publish/linux-x64/* package-root/opt/arcpdfview/
-          cat > package-root/DEBIAN/control <<EOF
-          Package: arcpdfview
-          Version: ${GITHUB_REF_NAME#v}
-          Section: utils
-          Priority: optional
-          Architecture: amd64
-          Maintainer: ArcPDFview
-          Description: ArcPDFview lightweight PDF viewer
-          EOF
+          printf '#!/bin/bash\nexec /opt/arcpdfview/AcroPDF.App "$@"\n' \
+            > package-root/usr/bin/arcpdfview
+          chmod +x package-root/usr/bin/arcpdfview
+          printf '[Desktop Entry]\nName=ArcPDFview\nComment=Lightweight PDF Viewer\nExec=arcpdfview\nIcon=arcpdfview\nType=Application\nCategories=Office;Viewer;\nMimeType=application/pdf;\n' \
+            > package-root/usr/share/applications/arcpdfview.desktop
+          printf 'Package: arcpdfview\nVersion: %s\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: ArcPDFview\nDepends: libfontconfig1, libglib2.0-0\nDescription: ArcPDFview lightweight PDF viewer\n' \
+            "${GITHUB_REF_NAME#v}" > package-root/DEBIAN/control
           dpkg-deb --build package-root ArcPDFview-linux-x64.deb
 
       - name: Build AppImage
         run: |
           mkdir -p AppDir/usr/bin
           cp -r publish/linux-x64/* AppDir/usr/bin/
-          cat > AppDir/ArcPDFview.desktop <<'EOF'
-          [Desktop Entry]
-          Type=Application
-          Name=ArcPDFview
-          Exec=AcroPDF.App
-          Categories=Office;
-          EOF
-          cat > AppDir/AppRun <<'EOF'
-          #!/usr/bin/env bash
-          exec "$(dirname "$0")/usr/bin/AcroPDF.App" "$@"
-          EOF
+          printf '[Desktop Entry]\nType=Application\nName=ArcPDFview\nExec=AcroPDF.App\nCategories=Office;\n' \
+            > AppDir/ArcPDFview.desktop
+          printf '#!/usr/bin/env bash\nexec "$(dirname "$0")/usr/bin/AcroPDF.App" "$@"\n' \
+            > AppDir/AppRun
           chmod +x AppDir/AppRun
-          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage \
+            -O appimagetool
           chmod +x appimagetool
-          ARCH=x86_64 ./appimagetool AppDir ArcPDFview-linux-x64.AppImage
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run AppDir ArcPDFview-linux-x64.AppImage
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
@@ -141,7 +138,7 @@ jobs:
           body_path: RELEASE_NOTES.md
           files: |
             release-artifacts/**/ArcPDFview-win-x64.exe
-            release-artifacts/**/ArcPDFview-win-x64.zip
             release-artifacts/**/ArcPDFview-win-x64.msi
+            release-artifacts/**/ArcPDFview-win-x64.zip
             release-artifacts/**/ArcPDFview-linux-x64.deb
             release-artifacts/**/ArcPDFview-linux-x64.AppImage
