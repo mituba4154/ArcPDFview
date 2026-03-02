@@ -740,29 +740,32 @@ public sealed class PdfiumRenderService : IPdfRenderService
             return;
         }
 
-        foreach (var documentHandle in _openDocuments.Keys)
+        RunOnPdfiumThread(() =>
         {
-            CloseNativeDocument(documentHandle);
-        }
+            foreach (var documentHandle in _openDocuments.Keys.ToArray())
+            {
+                CloseNativeDocument(documentHandle);
+            }
 
-        foreach (var documentHandle in _formHandles.Keys.ToArray())
-        {
-            DestroyFormHandle(documentHandle);
-        }
+            foreach (var documentHandle in _formHandles.Keys.ToArray())
+            {
+                DestroyFormHandle(documentHandle);
+            }
 
-        foreach (var timerId in _formTimers.Keys.ToArray())
-        {
-            StopFormTimer(timerId);
-        }
+            foreach (var timerId in _formTimers.Keys.ToArray())
+            {
+                StopFormTimer(timerId);
+            }
 
-        ClearCache();
+            ClearCache();
 
-        foreach (var context in _documentLoadContexts.Values)
-        {
-            context.Dispose();
-        }
+            foreach (var context in _documentLoadContexts.Values)
+            {
+                context.Dispose();
+            }
 
-        _documentLoadContexts.Clear();
+            _documentLoadContexts.Clear();
+        }).GetAwaiter().GetResult();
     }
 
     /// <summary>
@@ -783,11 +786,6 @@ public sealed class PdfiumRenderService : IPdfRenderService
             {
                 return Task.FromException<T>(ex);
             }
-        }
-
-        if (!PdfiumWorkerThread.IsAlive)
-        {
-            return Task.FromException<T>(new InvalidOperationException("PDFium worker thread is not running."));
         }
 
         var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -821,11 +819,6 @@ public sealed class PdfiumRenderService : IPdfRenderService
             {
                 return Task.FromException(ex);
             }
-        }
-
-        if (!PdfiumWorkerThread.IsAlive)
-        {
-            return Task.FromException(new InvalidOperationException("PDFium worker thread is not running."));
         }
 
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
