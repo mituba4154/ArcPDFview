@@ -419,7 +419,7 @@
         <ScrollViewer x:Name="SinglePageScrollViewer"
                       HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Auto">
-          <Grid HorizontalAlignment="Center"
+          <Grid HorizontalAlignment="Left"
                 VerticalAlignment="Top"
                 Margin="16">
             <controls:PdfPageControl x:Name="PageControl"
@@ -440,7 +440,7 @@
                       IsVisible="False">
           <ItemsControl x:Name="ContinuousPageItemsControl"
                         Margin="16"
-                        HorizontalAlignment="Center">
+                        HorizontalAlignment="Left">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>
                 <VirtualizingStackPanel />
@@ -466,7 +466,7 @@
                             HorizontalScrollBarVisibility="Auto"
                             VerticalScrollBarVisibility="Auto">
                 <controls:PdfPageControl x:Name="PrimarySplitPageControl"
-                                          HorizontalAlignment="Center"
+                                          HorizontalAlignment="Left"
                                           VerticalAlignment="Top"
                                           Margin="16"
                                           PointerPressed="OnPrimarySplitPagePointerPressed" />
@@ -496,7 +496,7 @@
                             HorizontalScrollBarVisibility="Auto"
                             VerticalScrollBarVisibility="Auto">
                 <controls:PdfPageControl x:Name="SecondarySplitPageControl"
-                                          HorizontalAlignment="Center"
+                                          HorizontalAlignment="Left"
                                           VerticalAlignment="Top"
                                           Margin="16"
                                           PointerPressed="OnSecondarySplitPagePointerPressed" />
