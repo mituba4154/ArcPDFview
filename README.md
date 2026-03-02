@@ -137,6 +137,11 @@ dotnet run --project src/AcroPDF.App/AcroPDF.App.csproj
 
 ---
 
+
+## リリース手順 / Release Guide
+
+GitHub Release で `.exe` を公開する具体手順は `docs/release.md` を参照してください。
+
 ## キーボードショートカット / Keyboard Shortcuts
 
 | ショートカット / Shortcut | 機能 / Action |
