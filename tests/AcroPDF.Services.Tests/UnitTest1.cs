@@ -220,6 +220,46 @@ public class PdfiumRenderServiceTests
         Assert.True(executed);
     }
 
+    [Fact]
+    public async Task RunOnPdfiumThread_UsesSingleWorkerThread()
+    {
+        var genericMethod = GetRunOnPdfiumThreadGeneric<int>();
+
+        var first = (Task<int>)genericMethod.Invoke(null, [new Func<int>(() => Environment.CurrentManagedThreadId)])!;
+        var second = (Task<int>)genericMethod.Invoke(null, [new Func<int>(() => Environment.CurrentManagedThreadId)])!;
+
+        await Task.WhenAll(first, second);
+
+        Assert.Equal(first.Result, second.Result);
+    }
+
+    [Fact]
+    public void FpdfFormFillInfo_ContainsXfaVersion2Fields()
+    {
+        var structType = typeof(PdfiumRenderService).GetNestedType("FPDF_FORMFILLINFO", BindingFlags.NonPublic);
+        Assert.NotNull(structType);
+
+        var fieldNames = structType!.GetFields(BindingFlags.Public | BindingFlags.Instance)
+            .Select(field => field.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Contains("FFI_GetLanguage", fieldNames);
+        Assert.Contains("FFI_DownloadFromURL", fieldNames);
+        Assert.Contains("FFI_PostRequestURL", fieldNames);
+        Assert.Contains("FFI_PutRequestURL", fieldNames);
+        Assert.Contains("FFI_UploadTo", fieldNames);
+        Assert.Contains("FFI_GetStringFromFile", fieldNames);
+        Assert.Contains("FFI_DeleteFileParam", fieldNames);
+        Assert.Contains("FFI_SetStringToFile", fieldNames);
+        Assert.Contains("FFI_GotoURL", fieldNames);
+        Assert.Contains("FFI_GetFilePath", fieldNames);
+        Assert.Contains("FFI_Alert", fieldNames);
+        Assert.Contains("FFI_Print", fieldNames);
+        Assert.Contains("FFI_SubmitForm", fieldNames);
+        Assert.Contains("FFI_GotoPage", fieldNames);
+        Assert.Contains("FFI_Browse", fieldNames);
+    }
+
     private static MethodInfo GetRunOnPdfiumThreadGeneric<T>()
     {
         return typeof(PdfiumRenderService).GetMethods(BindingFlags.NonPublic | BindingFlags.Static)

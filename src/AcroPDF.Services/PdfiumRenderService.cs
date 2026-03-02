@@ -37,8 +37,10 @@ public sealed class PdfiumRenderService : IPdfRenderService
     private const int PdfiumWorkerStackSizeBytes = 256 * 1024 * 1024;
 
     private static readonly object InitLock = new();
+    private static readonly BlockingCollection<Action> PdfiumWorkQueue = new();
     private static readonly AsyncLocal<FileStream?> SaveStreamContext = new();
     private static bool _libraryInitialized;
+    private static int _pdfiumWorkerThreadId;
 
     // Phase 5 要件: ページキャッシュは最大 10 エントリの LRU とする。
     private const int MaxPageCacheEntries = 10;
@@ -58,6 +60,16 @@ public sealed class PdfiumRenderService : IPdfRenderService
     private readonly FormFillGetLocalTimeCallback _getLocalTimeCallback;
     private int _nextFormTimerId;
     private int _disposed;
+
+    static PdfiumRenderService()
+    {
+        var workerThread = new Thread(ProcessPdfiumQueue, PdfiumWorkerStackSizeBytes)
+        {
+            IsBackground = true,
+            Name = "pdfium-worker"
+        };
+        workerThread.Start();
+    }
 
     /// <summary>
     /// <see cref="PdfiumRenderService"/> の新しいインスタンスを初期化します。
@@ -760,8 +772,20 @@ public sealed class PdfiumRenderService : IPdfRenderService
     /// </summary>
     private static Task<T> RunOnPdfiumThread<T>(Func<T> func)
     {
+        if (Environment.CurrentManagedThreadId == Volatile.Read(ref _pdfiumWorkerThreadId))
+        {
+            try
+            {
+                return Task.FromResult(func());
+            }
+            catch (Exception ex)
+            {
+                return Task.FromException<T>(ex);
+            }
+        }
+
         var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var thread = new Thread(() =>
+        PdfiumWorkQueue.Add(() =>
         {
             try
             {
@@ -771,11 +795,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
             {
                 tcs.SetException(ex);
             }
-        }, PdfiumWorkerStackSizeBytes)
-        {
-            IsBackground = true
-        };
-        thread.Start();
+        });
         return tcs.Task;
     }
 
@@ -784,8 +804,21 @@ public sealed class PdfiumRenderService : IPdfRenderService
     /// </summary>
     private static Task RunOnPdfiumThread(Action action)
     {
+        if (Environment.CurrentManagedThreadId == Volatile.Read(ref _pdfiumWorkerThreadId))
+        {
+            try
+            {
+                action();
+                return Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                return Task.FromException(ex);
+            }
+        }
+
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var thread = new Thread(() =>
+        PdfiumWorkQueue.Add(() =>
         {
             try
             {
@@ -796,12 +829,17 @@ public sealed class PdfiumRenderService : IPdfRenderService
             {
                 tcs.SetException(ex);
             }
-        }, PdfiumWorkerStackSizeBytes)
-        {
-            IsBackground = true
-        };
-        thread.Start();
+        });
         return tcs.Task;
+    }
+
+    private static void ProcessPdfiumQueue()
+    {
+        Volatile.Write(ref _pdfiumWorkerThreadId, Environment.CurrentManagedThreadId);
+        foreach (var action in PdfiumWorkQueue.GetConsumingEnumerable())
+        {
+            action();
+        }
     }
 
     private SKBitmap RenderPageInternal(PdfPage page, double dpi, bool useCache)
@@ -952,7 +990,8 @@ public sealed class PdfiumRenderService : IPdfRenderService
 
         var formFillInfo = new FPDF_FORMFILLINFO
         {
-            version = 2
+            version = 2,
+            xfa_disabled = new IntPtr(1)
         };
         formFillInfo.Release = Marshal.GetFunctionPointerForDelegate(_releaseCallback);
         formFillInfo.FFI_SetTimer = Marshal.GetFunctionPointerForDelegate(_setTimerCallback);
@@ -1553,6 +1592,21 @@ public sealed class PdfiumRenderService : IPdfRenderService
         public IntPtr xfa_disabled;
         public IntPtr FFI_EmailTo;
         public IntPtr FFI_GetPlatform;
+        public IntPtr FFI_GetLanguage;
+        public IntPtr FFI_DownloadFromURL;
+        public IntPtr FFI_PostRequestURL;
+        public IntPtr FFI_PutRequestURL;
+        public IntPtr FFI_UploadTo;
+        public IntPtr FFI_GetStringFromFile;
+        public IntPtr FFI_DeleteFileParam;
+        public IntPtr FFI_SetStringToFile;
+        public IntPtr FFI_GotoURL;
+        public IntPtr FFI_GetFilePath;
+        public IntPtr FFI_Alert;
+        public IntPtr FFI_Print;
+        public IntPtr FFI_SubmitForm;
+        public IntPtr FFI_GotoPage;
+        public IntPtr FFI_Browse;
     }
 
     [StructLayout(LayoutKind.Sequential)]
