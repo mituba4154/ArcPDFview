@@ -21,7 +21,7 @@ jobs:
           dotnet-version: "8.0.x"
 
       - name: Publish self-contained (win-x64)
-        run: dotnet publish src/AcroPDF.App/AcroPDF.App.csproj -c Release -r win-x64 --self-contained -o publish/win-x64
+        run: dotnet publish src/AcroPDF.App/AcroPDF.App.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o publish/win-x64
 
       - name: Install WiX v4
         shell: pwsh
@@ -121,7 +121,7 @@ jobs:
           Categories=Office;Viewer;
           Terminal=false
           EOF
-          
+
           cp AppDir/arcpdfview.desktop AppDir/usr/share/applications/arcpdfview.desktop
           printf '#!/usr/bin/env bash\nexec "$(dirname "$0")/usr/bin/AcroPDF.App" "$@"\n' \
             > AppDir/AppRun

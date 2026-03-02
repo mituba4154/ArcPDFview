@@ -6,7 +6,7 @@
     Version="1.0.0"
     UpgradeCode="{49E0AF24-34AA-4AAF-9CA8-C17A2E16E7F7}">
     <MajorUpgrade DowngradeErrorMessage="A newer version of ArcPDFview is already installed." />
-    <MediaTemplate />
+    <MediaTemplate EmbedCab="yes" />
 
     <Property Id="INSTALLDESKTOPSHORTCUT" Value="0" />
 
