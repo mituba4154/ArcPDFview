@@ -25,9 +25,42 @@
       <Setter Property="BorderThickness" Value="2" />
     </Style>
   </Window.Styles>
-  <Grid RowDefinitions="36,Auto,*,22"
+  <Grid RowDefinitions="Auto,36,Auto,*,22"
         KeyboardNavigation.TabNavigation="Cycle">
-    <Border Grid.Row="0"
+    <Menu Grid.Row="0"
+          Background="{DynamicResource BgDarkBrush}"
+          Foreground="{DynamicResource TextPrimaryBrush}">
+      <MenuItem x:Name="FileMenuItem" Header="ファイル">
+        <MenuItem x:Name="FileOpenMenuItem" Header="開く..." Click="OnOpenFileClicked" />
+        <MenuItem x:Name="FileRecentMenuItem" Header="最近" SubmenuOpened="OnRecentFilesMenuOpened" />
+        <Separator />
+        <MenuItem x:Name="FileSaveMenuItem" Header="保存" Click="OnSaveMenuItemClicked" />
+        <MenuItem x:Name="FilePrintMenuItem" Header="印刷..." Click="OnPrintClicked" />
+        <Separator />
+        <MenuItem x:Name="FileExitMenuItem" Header="終了" Click="OnExitMenuItemClicked" />
+      </MenuItem>
+      <MenuItem x:Name="EditMenuItem" Header="編集" />
+      <MenuItem x:Name="ViewMenuItem" Header="表示">
+        <MenuItem x:Name="ViewSinglePageMenuItem" Header="単ページ" Click="OnSinglePageModeClicked" />
+        <MenuItem x:Name="ViewContinuousMenuItem" Header="連続" Click="OnContinuousModeClicked" />
+        <MenuItem x:Name="ViewTwoPageMenuItem" Header="見開き" Click="OnTwoPageModeClicked" />
+        <Separator />
+        <MenuItem x:Name="ViewZoomInMenuItem" Header="ズームイン" Click="OnZoomInClicked" />
+        <MenuItem x:Name="ViewZoomOutMenuItem" Header="ズームアウト" Click="OnZoomOutClicked" />
+        <Separator />
+        <MenuItem x:Name="ViewThemeMenuItem" Header="テーマ" Click="OnSettingsClicked" />
+      </MenuItem>
+      <MenuItem x:Name="ToolsMenuItem" Header="ツール">
+        <MenuItem x:Name="ToolsSettingsMenuItem" Header="設定" Click="OnSettingsClicked" />
+      </MenuItem>
+      <MenuItem x:Name="AnnotationMenuItem" Header="注釈" />
+      <MenuItem x:Name="WindowMenuItem" Header="ウィンドウ" />
+      <MenuItem x:Name="HelpMenuItem" Header="ヘルプ">
+        <MenuItem x:Name="HelpAboutMenuItem" Header="バージョン情報" Click="OnAboutMenuItemClicked" />
+      </MenuItem>
+    </Menu>
+
+    <Border Grid.Row="1"
             Background="{DynamicResource BgDarkBrush}"
             BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="0,0,0,1">
@@ -51,7 +84,7 @@
       </DockPanel>
     </Border>
 
-    <Border Grid.Row="1"
+    <Border Grid.Row="2"
             Background="{DynamicResource BgToolbarBrush}"
             BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="0,0,0,1">
@@ -74,31 +107,56 @@
                   automation:AutomationProperties.Name="最近開いたファイル"
                   Click="OnRecentFilesClicked" />
           <Separator Margin="4,0" />
-          <ToggleButton x:Name="HighlightToolButton"
-                        Content="🖊"
-                        automation:AutomationProperties.Name="ハイライトツール"
-                        ToolTip.Tip="ハイライトツール"
-                        Click="OnHighlightToolClicked" />
-          <ToggleButton x:Name="CommentToolButton"
-                        Content="💬"
-                        automation:AutomationProperties.Name="コメントツール"
-                        ToolTip.Tip="コメントツール"
-                        Click="OnCommentToolClicked" />
-          <ToggleButton x:Name="FreehandToolButton"
-                        Content="✍"
-                        automation:AutomationProperties.Name="フリーハンドツール"
-                        ToolTip.Tip="フリーハンドツール"
-                        Click="OnFreehandToolClicked" />
-          <ToggleButton x:Name="ShapeToolButton"
-                        Content="□"
-                        automation:AutomationProperties.Name="図形ツール"
-                        ToolTip.Tip="図形ツール"
-                        Click="OnShapeToolClicked" />
-          <ToggleButton x:Name="StampToolButton"
-                        Content="🏷"
-                        automation:AutomationProperties.Name="スタンプツール"
-                        ToolTip.Tip="スタンプツール"
-                        Click="OnStampToolClicked" />
+           <ToggleButton x:Name="HighlightToolButton"
+                         MinWidth="36"
+                         automation:AutomationProperties.Name="ハイライトツール"
+                         ToolTip.Tip="ハイライトツール"
+                         Click="OnHighlightToolClicked">
+             <StackPanel Spacing="0">
+               <TextBlock Text="🖊" HorizontalAlignment="Center" />
+               <TextBlock x:Name="HighlightToolLabelTextBlock" FontSize="9" HorizontalAlignment="Center" Text="ハイライト" />
+             </StackPanel>
+           </ToggleButton>
+           <ToggleButton x:Name="CommentToolButton"
+                         MinWidth="36"
+                         automation:AutomationProperties.Name="コメントツール"
+                         ToolTip.Tip="コメントツール"
+                         Click="OnCommentToolClicked">
+             <StackPanel Spacing="0">
+               <TextBlock Text="💬" HorizontalAlignment="Center" />
+               <TextBlock x:Name="CommentToolLabelTextBlock" FontSize="9" HorizontalAlignment="Center" Text="コメント" />
+             </StackPanel>
+           </ToggleButton>
+           <ToggleButton x:Name="FreehandToolButton"
+                         MinWidth="36"
+                         automation:AutomationProperties.Name="フリーハンドツール"
+                         ToolTip.Tip="フリーハンドツール"
+                         Click="OnFreehandToolClicked">
+             <StackPanel Spacing="0">
+               <TextBlock Text="✍" HorizontalAlignment="Center" />
+               <TextBlock x:Name="FreehandToolLabelTextBlock" FontSize="9" HorizontalAlignment="Center" Text="手書き" />
+             </StackPanel>
+           </ToggleButton>
+           <ToggleButton x:Name="ShapeToolButton"
+                         MinWidth="36"
+                         automation:AutomationProperties.Name="図形ツール"
+                         ToolTip.Tip="図形ツール"
+                         Click="OnShapeToolClicked">
+             <StackPanel Spacing="0">
+               <TextBlock Text="□" HorizontalAlignment="Center" />
+               <TextBlock x:Name="ShapeToolLabelTextBlock" FontSize="9" HorizontalAlignment="Center" Text="図形" />
+             </StackPanel>
+           </ToggleButton>
+           <ToggleButton x:Name="StampToolButton"
+                         MinWidth="36"
+                         automation:AutomationProperties.Name="スタンプツール"
+                         ToolTip.Tip="スタンプツール"
+                         Click="OnStampToolClicked">
+             <StackPanel Spacing="0">
+               <TextBlock Text="🏷" HorizontalAlignment="Center" />
+               <TextBlock x:Name="StampToolLabelTextBlock" FontSize="9" HorizontalAlignment="Center" Text="スタンプ" />
+             </StackPanel>
+           </ToggleButton>
           <ComboBox x:Name="ShapeTypeComboBox"
                     Width="88"
                     SelectedIndex="0"
@@ -237,43 +295,14 @@
                   Click="OnPrintClicked" />
           <Button x:Name="SettingsButton"
                   Content="設定"
-                  automation:AutomationProperties.Name="表示設定を開く">
-            <Button.Flyout>
-              <Flyout Placement="BottomEdgeAlignedRight">
-                <StackPanel Margin="8"
-                            Spacing="8"
-                            MinWidth="190">
-                  <TextBlock x:Name="ThemeLabelTextBlock"
-                             Text="テーマ"
-                             Foreground="{DynamicResource TextPrimaryBrush}" />
-                  <ComboBox x:Name="SettingsThemeComboBox"
-                            SelectedIndex="0"
-                            automation:AutomationProperties.Name="テーマ選択"
-                            SelectionChanged="OnThemeSelectionChanged">
-                    <ComboBoxItem Content="OS" />
-                    <ComboBoxItem Content="Light" />
-                    <ComboBoxItem Content="Dark" />
-                  </ComboBox>
-                  <TextBlock x:Name="LanguageLabelTextBlock"
-                             Text="言語"
-                             Foreground="{DynamicResource TextPrimaryBrush}" />
-                  <ComboBox x:Name="SettingsLanguageComboBox"
-                            SelectedIndex="0"
-                            automation:AutomationProperties.Name="言語選択"
-                            SelectionChanged="OnLanguageSelectionChanged">
-                    <ComboBoxItem Content="日本語" />
-                    <ComboBoxItem Content="English" />
-                  </ComboBox>
-                </StackPanel>
-              </Flyout>
-            </Button.Flyout>
-          </Button>
+                  automation:AutomationProperties.Name="表示設定を開く"
+                  Click="OnSettingsClicked" />
         </StackPanel>
       </StackPanel>
       </ScrollViewer>
     </Border>
 
-    <Grid Grid.Row="2"
+    <Grid Grid.Row="3"
           ColumnDefinitions="220,*,240"
           Background="{DynamicResource BgDarkBrush}">
       <Border Grid.Column="0"
@@ -282,7 +311,13 @@
               BorderThickness="0,0,1,0">
           <TabControl x:Name="LeftSidebarTabControl"
                       automation:AutomationProperties.Name="左サイドバータブ">
-          <TabItem Header="サムネイル">
+          <TabItem>
+            <TabItem.Header>
+              <StackPanel Orientation="Vertical" Spacing="0">
+                <TextBlock Text="▤" HorizontalAlignment="Center" />
+                <TextBlock x:Name="ThumbnailTabLabelTextBlock" FontSize="9" Text="サムネ" HorizontalAlignment="Center" />
+              </StackPanel>
+            </TabItem.Header>
             <ScrollViewer x:Name="ThumbnailScrollViewer"
                           HorizontalScrollBarVisibility="Disabled"
                           VerticalScrollBarVisibility="Auto">
@@ -291,7 +326,13 @@
                           Spacing="8" />
             </ScrollViewer>
           </TabItem>
-          <TabItem Header="目次">
+          <TabItem>
+            <TabItem.Header>
+              <StackPanel Orientation="Vertical" Spacing="0">
+                <TextBlock Text="≡" HorizontalAlignment="Center" />
+                <TextBlock x:Name="BookmarkTabLabelTextBlock" FontSize="9" Text="目次" HorizontalAlignment="Center" />
+              </StackPanel>
+            </TabItem.Header>
             <ScrollViewer x:Name="BookmarkScrollViewer"
                           HorizontalScrollBarVisibility="Disabled"
                           VerticalScrollBarVisibility="Auto">
@@ -300,7 +341,59 @@
                           Spacing="2" />
             </ScrollViewer>
           </TabItem>
-          <TabItem Header="添付">
+          <TabItem>
+            <TabItem.Header>
+              <StackPanel Orientation="Vertical" Spacing="0">
+                <TextBlock Text="💬" HorizontalAlignment="Center" />
+                <TextBlock x:Name="AnnotationTabLabelTextBlock" FontSize="9" Text="注釈" HorizontalAlignment="Center" />
+              </StackPanel>
+            </TabItem.Header>
+            <Grid RowDefinitions="Auto,*,Auto"
+                  Margin="8">
+              <StackPanel Orientation="Horizontal"
+                          Spacing="8">
+                <TextBlock Text="注釈"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           VerticalAlignment="Center" />
+                <Border Background="{DynamicResource AccentBrush}"
+                        CornerRadius="10"
+                        Padding="6,2">
+                  <TextBlock x:Name="AnnotationCountBadgeTextBlock"
+                             Foreground="White"
+                             FontSize="11"
+                             Text="0" />
+                </Border>
+              </StackPanel>
+              <ListBox x:Name="AnnotationPanelListBox"
+                       Grid.Row="1"
+                       Margin="0,8,0,8"
+                       automation:AutomationProperties.Name="注釈カード一覧"
+                       SelectionChanged="OnAnnotationPanelSelectionChanged" />
+              <StackPanel Grid.Row="2"
+                          Orientation="Horizontal"
+                          Spacing="6">
+                <Button x:Name="DeleteAnnotationButton"
+                        Content="削除"
+                        automation:AutomationProperties.Name="選択した注釈を削除"
+                        Click="OnDeleteAnnotationClicked" />
+                <Button x:Name="ExportFdfButton"
+                        Content="FDF エクスポート"
+                        automation:AutomationProperties.Name="注釈をFDFで書き出し"
+                        Click="OnExportFdfClicked" />
+                <Button x:Name="ImportFdfButton"
+                        Content="FDF インポート"
+                        automation:AutomationProperties.Name="注釈をFDFから読み込み"
+                        Click="OnImportFdfClicked" />
+              </StackPanel>
+            </Grid>
+          </TabItem>
+          <TabItem>
+            <TabItem.Header>
+              <StackPanel Orientation="Vertical" Spacing="0">
+                <TextBlock Text="🔗" HorizontalAlignment="Center" />
+                <TextBlock x:Name="AttachmentTabLabelTextBlock" FontSize="9" Text="添付" HorizontalAlignment="Center" />
+              </StackPanel>
+            </TabItem.Header>
             <DockPanel Margin="8">
                <Button x:Name="ExtractAttachmentButton"
                        DockPanel.Dock="Bottom"
@@ -566,45 +659,9 @@
               Background="{DynamicResource BgPanelBrush}"
               BorderBrush="{DynamicResource BorderBrush}"
               BorderThickness="1,0,0,0">
-        <Grid RowDefinitions="Auto,*,Auto,Auto"
+        <Grid RowDefinitions="Auto"
               Margin="8">
-          <StackPanel Orientation="Horizontal"
-                      Spacing="8">
-            <TextBlock Text="注釈パネル"
-                       Foreground="{DynamicResource TextPrimaryBrush}"
-                       VerticalAlignment="Center" />
-            <Border Background="{DynamicResource AccentBrush}"
-                    CornerRadius="10"
-                    Padding="6,2">
-              <TextBlock x:Name="AnnotationCountBadgeTextBlock"
-                         Foreground="White"
-                         FontSize="11"
-                         Text="0" />
-            </Border>
-          </StackPanel>
-          <ListBox x:Name="AnnotationPanelListBox"
-                    Grid.Row="1"
-                    Margin="0,8,0,8"
-                    automation:AutomationProperties.Name="注釈カード一覧"
-                    SelectionChanged="OnAnnotationPanelSelectionChanged" />
-          <StackPanel Grid.Row="2"
-                      Orientation="Horizontal"
-                      Spacing="6">
-            <Button x:Name="DeleteAnnotationButton"
-                    Content="削除"
-                    automation:AutomationProperties.Name="選択した注釈を削除"
-                    Click="OnDeleteAnnotationClicked" />
-            <Button x:Name="ExportFdfButton"
-                    Content="FDF エクスポート"
-                    automation:AutomationProperties.Name="注釈をFDFで書き出し"
-                    Click="OnExportFdfClicked" />
-            <Button x:Name="ImportFdfButton"
-                    Content="FDF インポート"
-                    automation:AutomationProperties.Name="注釈をFDFから読み込み"
-                    Click="OnImportFdfClicked" />
-          </StackPanel>
-          <StackPanel Grid.Row="3"
-                      Margin="0,10,0,0"
+          <StackPanel Margin="0,10,0,0"
                       Spacing="2">
             <TextBlock Text="ファイル情報"
                        Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -615,7 +672,7 @@
       </Border>
     </Grid>
 
-    <Border Grid.Row="3"
+    <Border Grid.Row="4"
             Background="{DynamicResource BgDarkBrush}"
             BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="0,1,0,0">
