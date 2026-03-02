@@ -86,6 +86,7 @@ public partial class MainWindow : Window
     private Avalonia.Controls.Shapes.Polyline? _activeFreehandPreview;
     private Point? _shapeStartPdfPoint;
     private int? _thumbnailDragPageNumber;
+    private bool _isRebuildingSplitSelectors;
     private bool _isInitialized;
 
     /// <summary>
@@ -2933,6 +2934,11 @@ public partial class MainWindow : Window
 
     private void OnPrimarySplitTabSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
+        if (_isRebuildingSplitSelectors)
+        {
+            return;
+        }
+
         if (PrimarySplitTabComboBox.SelectedIndex < 0 || PrimarySplitTabComboBox.SelectedIndex >= _tabs.Count)
         {
             return;
@@ -2943,6 +2949,11 @@ public partial class MainWindow : Window
 
     private void OnSecondarySplitTabSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
+        if (_isRebuildingSplitSelectors)
+        {
+            return;
+        }
+
         if (SecondarySplitTabComboBox.SelectedIndex < 0 || SecondarySplitTabComboBox.SelectedIndex >= _tabs.Count)
         {
             return;
@@ -3433,17 +3444,25 @@ public partial class MainWindow : Window
 
     private void RebuildSplitTabSelectors()
     {
-        var names = _tabs.Select(tab => tab.Title).Cast<object>().ToArray();
-        PrimarySplitTabComboBox.ItemsSource = names;
-        SecondarySplitTabComboBox.ItemsSource = names;
-        PrimarySplitTabComboBox.SelectedIndex = _activeTab is null ? -1 : _tabs.IndexOf(_activeTab);
-        SecondarySplitTabComboBox.SelectedIndex = _splitSecondaryTab is null
-            ? -1
-            : Math.Max(
-                _tabs.IndexOf(_splitSecondaryTab),
-                _activeTab is null || !string.Equals(_splitSecondaryTab.Document.FilePath, _activeTab.Document.FilePath, StringComparison.OrdinalIgnoreCase)
-                    ? -1
-                    : _tabs.IndexOf(_activeTab));
+        _isRebuildingSplitSelectors = true;
+        try
+        {
+            var names = _tabs.Select(tab => tab.Title).Cast<object>().ToArray();
+            PrimarySplitTabComboBox.ItemsSource = names;
+            SecondarySplitTabComboBox.ItemsSource = names;
+            PrimarySplitTabComboBox.SelectedIndex = _activeTab is null ? -1 : _tabs.IndexOf(_activeTab);
+            SecondarySplitTabComboBox.SelectedIndex = _splitSecondaryTab is null
+                ? -1
+                : Math.Max(
+                    _tabs.IndexOf(_splitSecondaryTab),
+                    _activeTab is null || !string.Equals(_splitSecondaryTab.Document.FilePath, _activeTab.Document.FilePath, StringComparison.OrdinalIgnoreCase)
+                        ? -1
+                        : _tabs.IndexOf(_activeTab));
+        }
+        finally
+        {
+            _isRebuildingSplitSelectors = false;
+        }
     }
 
     private void SwitchTab(int offset)
