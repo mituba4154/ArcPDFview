@@ -97,15 +97,23 @@
                     Spacing="4"
                     VerticalAlignment="Center">
           <Button x:Name="OpenFileButton"
-                  Content="開く"
                   Padding="10,2"
                   automation:AutomationProperties.Name="PDFファイルを開く"
-                  Click="OnOpenFileClicked" />
+                  Click="OnOpenFileClicked">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <TextBlock Text="📂" />
+              <TextBlock Text="開く" />
+            </StackPanel>
+          </Button>
           <Button x:Name="RecentFilesButton"
-                  Content="最近"
                   Padding="10,2"
                   automation:AutomationProperties.Name="最近開いたファイル"
-                  Click="OnRecentFilesClicked" />
+                  Click="OnRecentFilesClicked">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <TextBlock Text="🕘" />
+              <TextBlock Text="最近" />
+            </StackPanel>
+          </Button>
           <Separator Margin="4,0" />
            <ToggleButton x:Name="HighlightToolButton"
                          MinWidth="36"
@@ -419,11 +427,11 @@
         <ScrollViewer x:Name="SinglePageScrollViewer"
                       HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Auto">
-          <Grid HorizontalAlignment="Center"
+          <Grid HorizontalAlignment="Left"
                 VerticalAlignment="Top"
                 Margin="16">
             <controls:PdfPageControl x:Name="PageControl"
-                                      HorizontalAlignment="Center"
+                                      HorizontalAlignment="Left"
                                       VerticalAlignment="Top"
                                       automation:AutomationProperties.Name="PDFページビュー"
                                       PointerMoved="OnSinglePagePointerMoved"
@@ -440,7 +448,7 @@
                       IsVisible="False">
           <ItemsControl x:Name="ContinuousPageItemsControl"
                         Margin="16"
-                        HorizontalAlignment="Center">
+                        HorizontalAlignment="Left">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>
                 <VirtualizingStackPanel />
@@ -466,7 +474,7 @@
                             HorizontalScrollBarVisibility="Auto"
                             VerticalScrollBarVisibility="Auto">
                 <controls:PdfPageControl x:Name="PrimarySplitPageControl"
-                                          HorizontalAlignment="Center"
+                                          HorizontalAlignment="Left"
                                           VerticalAlignment="Top"
                                           Margin="16"
                                           PointerPressed="OnPrimarySplitPagePointerPressed" />
@@ -496,7 +504,7 @@
                             HorizontalScrollBarVisibility="Auto"
                             VerticalScrollBarVisibility="Auto">
                 <controls:PdfPageControl x:Name="SecondarySplitPageControl"
-                                          HorizontalAlignment="Center"
+                                          HorizontalAlignment="Left"
                                           VerticalAlignment="Top"
                                           Margin="16"
                                           PointerPressed="OnSecondarySplitPagePointerPressed" />
