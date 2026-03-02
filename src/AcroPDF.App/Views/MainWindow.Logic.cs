@@ -29,7 +29,7 @@ namespace AcroPDF.App.Views;
 public partial class MainWindow : Window
 {
     private const double PdfDpi = 72d;
-    private const double ScreenDpi = 96d;
+    private const double BaseScreenDpi = 96d;
     private const int ThumbnailWidthPx = 140;
     private const double A4AspectRatio = 0.707d;
     private const double SplitPaneMinWidthPx = 120d;
@@ -87,7 +87,6 @@ public partial class MainWindow : Window
     private Point? _shapeStartPdfPoint;
     private int? _thumbnailDragPageNumber;
     private bool _isRebuildingSplitSelectors;
-    private bool _isInitialized;
 
     /// <summary>
     /// <see cref="MainWindow"/> の新しいインスタンスを初期化します。
@@ -140,7 +139,6 @@ public partial class MainWindow : Window
         ApplySettingsToToolbar();
         InitializeAnnotationTooling();
         RebuildRecentFilesMenu();
-        _isInitialized = true;
     }
 
     private static T ResolveRequiredService<T>()
@@ -343,12 +341,13 @@ public partial class MainWindow : Window
         }
 
         var page = tab.Document.Pages[tab.CurrentPage - 1];
+        var renderMultiplier = GetRenderMultiplier();
         PageControl.CurrentPage = page.PageNumber;
         PageControl.ZoomLevel = 1.0d;
-        PageControl.Width = bitmap.Width;
-        PageControl.Height = bitmap.Height;
-        AnnotationOverlayCanvas.Width = bitmap.Width;
-        AnnotationOverlayCanvas.Height = bitmap.Height;
+        PageControl.Width = GetBitmapDisplaySize(bitmap.Width, renderMultiplier);
+        PageControl.Height = GetBitmapDisplaySize(bitmap.Height, renderMultiplier);
+        AnnotationOverlayCanvas.Width = PageControl.Width;
+        AnnotationOverlayCanvas.Height = PageControl.Height;
         PageControl.SetBitmap(bitmap);
         ApplyHighlights(PageControl, tab, page);
         RebuildCommentOverlay(tab, page);
@@ -381,17 +380,19 @@ public partial class MainWindow : Window
 
         control.CurrentPage = tab.CurrentPage;
         control.ZoomLevel = 1.0d;
-        control.Width = bitmap.Width;
-        control.Height = bitmap.Height;
+        var renderMultiplier = GetRenderMultiplier();
+        control.Width = GetBitmapDisplaySize(bitmap.Width, renderMultiplier);
+        control.Height = GetBitmapDisplaySize(bitmap.Height, renderMultiplier);
         control.SetBitmap(bitmap);
     }
 
     private async Task<SKBitmap?> RenderTabBitmapAsync(TabViewModel tab, CancellationToken ct)
     {
+        var renderZoom = tab.ZoomLevel * GetRenderMultiplier();
         return await _pdfRenderService.RenderCompositePageAsync(
             tab.Document,
             tab.CurrentPage,
-            tab.ZoomLevel,
+            renderZoom,
             tab.IsTwoPageMode,
             tab.RotationDegrees,
             ct).ConfigureAwait(true);
@@ -405,7 +406,7 @@ public partial class MainWindow : Window
         ClearContinuousPageItems();
         _formFieldMap.Clear();
 
-        var scale = (ScreenDpi * Math.Max(0.01d, tab.ZoomLevel)) / PdfDpi;
+        var scale = GetLayoutScale(tab.ZoomLevel);
         foreach (var page in tab.Document.Pages)
         {
             ct.ThrowIfCancellationRequested();
@@ -500,15 +501,17 @@ public partial class MainWindow : Window
         state.IsRendering = true;
         try
         {
-            using var bitmap = await _pdfRenderService.RenderPageAsync(state.Page, tab.ZoomLevel, ct).ConfigureAwait(true);
+            var renderMultiplier = GetRenderMultiplier();
+            var renderZoom = tab.ZoomLevel * renderMultiplier;
+            using var bitmap = await _pdfRenderService.RenderPageAsync(state.Page, renderZoom, ct).ConfigureAwait(true);
             var pageControl = state.PageControl ?? new PdfPageControl
             {
                 ZoomLevel = 1.0d,
                 CurrentPage = state.Page.PageNumber,
                 HorizontalAlignment = HorizontalAlignment.Center
             };
-            pageControl.Width = bitmap.Width;
-            pageControl.Height = bitmap.Height;
+            pageControl.Width = GetBitmapDisplaySize(bitmap.Width, renderMultiplier);
+            pageControl.Height = GetBitmapDisplaySize(bitmap.Height, renderMultiplier);
             pageControl.SetBitmap(bitmap);
             if (state.PageControl is null)
             {
@@ -522,19 +525,19 @@ public partial class MainWindow : Window
             state.RenderedZoomLevel = tab.ZoomLevel;
 
             var overlayCanvas = state.OverlayCanvas ?? new Canvas { IsHitTestVisible = true };
-            overlayCanvas.Width = bitmap.Width;
-            overlayCanvas.Height = bitmap.Height;
+            overlayCanvas.Width = pageControl.Width;
+            overlayCanvas.Height = pageControl.Height;
             state.OverlayCanvas = overlayCanvas;
 
             var layer = new Grid
             {
-                Width = bitmap.Width,
-                Height = bitmap.Height
+                Width = pageControl.Width,
+                Height = pageControl.Height
             };
             layer.Children.Add(pageControl);
             layer.Children.Add(overlayCanvas);
-            state.Host.Width = bitmap.Width;
-            state.Host.Height = bitmap.Height;
+            state.Host.Width = pageControl.Width;
+            state.Host.Height = pageControl.Height;
             state.Host.Child = layer;
 
             _continuousPageMap[pageControl] = (tab, state.Page);
@@ -551,15 +554,10 @@ public partial class MainWindow : Window
     {
         if (state.PageControl is not null)
         {
-            state.PageControl.SetBitmap(null);
-            _continuousPageMap.Remove(state.PageControl);
+            _continuousPageMap[state.PageControl] = (state.Tab, state.Page);
         }
 
         state.OverlayCanvas?.Children.Clear();
-        state.Host.Child = new Border
-        {
-            Background = new SolidColorBrush((Color)Application.Current!.FindResource("BgPanel2")!)
-        };
     }
 
     private void ClearContinuousPageItems()
@@ -964,7 +962,7 @@ public partial class MainWindow : Window
             .ToArray();
     }
 
-    private static IReadOnlyList<AnnotationVisual> MapAnnotationVisuals(Annotation annotation, PdfPage page, double zoomLevel)
+    private IReadOnlyList<AnnotationVisual> MapAnnotationVisuals(Annotation annotation, PdfPage page, double zoomLevel)
     {
         switch (annotation)
         {
@@ -1028,9 +1026,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private static Avalonia.Rect ConvertBoundsToPixelRect(PdfTextBounds bounds, PdfPage page, double zoomLevel)
+    private Avalonia.Rect ConvertBoundsToPixelRect(PdfTextBounds bounds, PdfPage page, double zoomLevel)
     {
-        var scale = (ScreenDpi * Math.Max(0.01d, zoomLevel)) / PdfDpi;
+        var scale = GetLayoutScale(zoomLevel);
         var left = Math.Min(bounds.Left, bounds.Right) * scale;
         var right = Math.Max(bounds.Left, bounds.Right) * scale;
         var topPdf = Math.Max(bounds.Top, bounds.Bottom);
@@ -1055,7 +1053,7 @@ public partial class MainWindow : Window
     {
         var targetCanvas = overlayCanvas ?? AnnotationOverlayCanvas;
         targetCanvas.Children.Clear();
-        var dpiScale = (ScreenDpi * Math.Max(0.01d, tab.ZoomLevel)) / PdfDpi;
+        var dpiScale = GetLayoutScale(tab.ZoomLevel);
         var comments = tab.Document.Annotations
             .Where(annotation => annotation.PageNumber == page.PageNumber)
             .OfType<CommentAnnotation>()
@@ -1148,6 +1146,37 @@ public partial class MainWindow : Window
             Canvas.SetTop(noteBorder, Math.Max(0, anchor.Y));
             targetCanvas.Children.Add(noteBorder);
         }
+    }
+
+    private void RefreshAnnotationOverlay(TabViewModel tab)
+    {
+        if (_mainWindowViewModel.IsSplitView)
+        {
+            return;
+        }
+
+        if (tab.IsContinuousMode)
+        {
+            foreach (var state in _continuousPageStates.Where(state => ReferenceEquals(state.Tab, tab)))
+            {
+                if (state.OverlayCanvas is null)
+                {
+                    continue;
+                }
+
+                RebuildCommentOverlay(tab, state.Page, state.OverlayCanvas);
+            }
+
+            return;
+        }
+
+        if (tab.CurrentPage <= 0 || tab.CurrentPage > tab.Document.Pages.Count)
+        {
+            return;
+        }
+
+        var page = tab.Document.Pages[tab.CurrentPage - 1];
+        RebuildCommentOverlay(tab, page, AnnotationOverlayCanvas);
     }
 
     private async Task RebuildFormOverlayAsync(TabViewModel tab, PdfPage page, CancellationToken ct)
@@ -1536,9 +1565,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private static Point ConvertPdfPointToPixelPoint(AnnotationPoint point, PdfPage page, double zoomLevel)
+    private Point ConvertPdfPointToPixelPoint(AnnotationPoint point, PdfPage page, double zoomLevel)
     {
-        var scale = (ScreenDpi * Math.Max(0.01d, zoomLevel)) / PdfDpi;
+        var scale = GetLayoutScale(zoomLevel);
         return new Point(point.X * scale, (page.HeightPt - point.Y) * scale);
     }
 
@@ -1814,7 +1843,7 @@ public partial class MainWindow : Window
         };
         tab.Document.AddAnnotation(comment);
         RebuildAnnotationPanel();
-        _ = RenderActiveTabAsync();
+        RefreshAnnotationOverlay(tab);
     }
 
     private void AddFreehandAnnotation(TabViewModel tab, PdfPage page, IReadOnlyList<AnnotationPoint> points)
@@ -2089,10 +2118,31 @@ public partial class MainWindow : Window
         _searchCts = null;
     }
 
+    private double GetRenderDpi()
+    {
+        var scaling = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0d;
+        return BaseScreenDpi * scaling;
+    }
+
+    private double GetRenderMultiplier()
+    {
+        return GetRenderDpi() / BaseScreenDpi;
+    }
+
+    private static double GetLayoutScale(double zoomLevel)
+    {
+        return (BaseScreenDpi * Math.Max(0.01d, zoomLevel)) / PdfDpi;
+    }
+
+    private static double GetBitmapDisplaySize(int pixelSize, double renderMultiplier)
+    {
+        return pixelSize / Math.Max(0.01d, renderMultiplier);
+    }
+
     private void UpdateMouseCoordinates(TabViewModel tab, PdfPage page, Point position, double zoom)
     {
-        var x = (position.X * PdfDpi) / (ScreenDpi * Math.Max(zoom, 0.01d));
-        var y = page.HeightPt - ((position.Y * PdfDpi) / (ScreenDpi * Math.Max(zoom, 0.01d)));
+        var x = (position.X * PdfDpi) / (BaseScreenDpi * Math.Max(zoom, 0.01d));
+        var y = page.HeightPt - ((position.Y * PdfDpi) / (BaseScreenDpi * Math.Max(zoom, 0.01d)));
         tab.MouseX = Math.Clamp(x, 0, page.WidthPt);
         tab.MouseY = Math.Clamp(y, 0, page.HeightPt);
         UpdateStatusBar();
@@ -2254,7 +2304,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var scale = (ScreenDpi * Math.Max(0.01d, tab.ZoomLevel)) / PdfDpi;
+        var scale = GetLayoutScale(tab.ZoomLevel);
         var points = _currentFreehandStroke
             .Select(point => _annotationService.ConvertPdfToScreen(point.X, point.Y, scale, page.HeightPt))
             .Select(point => new Avalonia.Point(point.X, point.Y))
@@ -2932,6 +2982,79 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnRecentFilesMenuOpened(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        RebuildRecentFilesMenu();
+    }
+
+    private async void OnSettingsClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        await ShowSettingsWindowAsync().ConfigureAwait(true);
+    }
+
+    private async Task ShowSettingsWindowAsync()
+    {
+        var dialog = new SettingsWindow(_settings);
+        var updated = await dialog.ShowDialog<AppSettings?>(this).ConfigureAwait(true);
+        if (updated is null)
+        {
+            return;
+        }
+
+        _settings = updated;
+        if (Application.Current is App app)
+        {
+            app.SetThemePreference(_settings.Theme);
+        }
+
+        AppStrings.CurrentCulture = string.Equals(_settings.Language, "en", StringComparison.OrdinalIgnoreCase)
+            ? new CultureInfo("en")
+            : new CultureInfo("ja");
+        ApplyLocalizedText();
+        if (_activeTab is not null)
+        {
+            _activeTab.ZoomLevel = PdfiumRenderService.ClampZoomLevel(_settings.DefaultZoom);
+            _activeTab.IsContinuousMode = _settings.DefaultViewMode == ViewMode.Continuous;
+            _activeTab.IsTwoPageMode = _settings.DefaultViewMode == ViewMode.TwoPage;
+            _ = RenderActiveTabAsync();
+        }
+
+        _settingsService.Save(_settings);
+    }
+
+    private async void OnSaveMenuItemClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        var targetTab = GetCommandTargetTab();
+        if (targetTab is null || !_activeSecurityInfo.CanAnnotate)
+        {
+            return;
+        }
+
+        await _annotationService.SaveAnnotationsAsync(targetTab.Document).ConfigureAwait(true);
+    }
+
+    private void OnExitMenuItemClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        Close();
+    }
+
+    private async void OnAboutMenuItemClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        var dialog = CreateStyledDialog("バージョン情報", DialogSeverity.Information, 360, 180);
+        dialog.Content = new StackPanel
+        {
+            Margin = new Thickness(16),
+            Spacing = 8,
+            Children =
+            {
+                new TextBlock { Text = "AcroPDF", FontSize = 20, Foreground = new SolidColorBrush((Color)Application.Current!.FindResource("Accent")!) },
+                new TextBlock { Text = $".NET {Environment.Version}", Foreground = new SolidColorBrush((Color)Application.Current!.FindResource("TextPrimary")!) }
+            }
+        };
+
+        await dialog.ShowDialog(this).ConfigureAwait(true);
+    }
+
     private void OnPrimarySplitTabSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (_isRebuildingSplitSelectors)
@@ -3146,6 +3269,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (ctrl && e.Key == Key.OemComma)
+        {
+            await ShowSettingsWindowAsync().ConfigureAwait(true);
+            e.Handled = true;
+            return;
+        }
+
         var targetTab = GetCommandTargetTab();
         if (targetTab is null)
         {
@@ -3355,16 +3485,6 @@ public partial class MainWindow : Window
     private void ApplySettingsToToolbar()
     {
         ZoomComboBox.SelectedIndex = 3;
-        SettingsThemeComboBox.SelectedIndex = _settings.Theme switch
-        {
-            ThemePreference.Light => 1,
-            ThemePreference.Dark => 2,
-            _ => 0
-        };
-
-        SettingsLanguageComboBox.SelectedIndex = string.Equals(_settings.Language, "en", StringComparison.OrdinalIgnoreCase)
-            ? 1
-            : 0;
     }
 
     private void ApplyLocalizedText()
@@ -3372,47 +3492,15 @@ public partial class MainWindow : Window
         OpenFileButton.Content = AppStrings.Get("Open");
         RecentFilesButton.Content = AppStrings.Get("Recent");
         SettingsButton.Content = AppStrings.Get("Settings");
-        ThemeLabelTextBlock.Text = AppStrings.Get("Theme");
-        LanguageLabelTextBlock.Text = AppStrings.Get("Language");
+        HighlightToolLabelTextBlock.Text = AppStrings.Get("ToolHighlight");
+        CommentToolLabelTextBlock.Text = AppStrings.Get("ToolComment");
+        FreehandToolLabelTextBlock.Text = AppStrings.Get("ToolFreehand");
+        ShapeToolLabelTextBlock.Text = AppStrings.Get("ToolShape");
+        StampToolLabelTextBlock.Text = AppStrings.Get("ToolStamp");
         EmptyStateTextBlock.Text = AppStrings.Get("EmptyState");
         DragDropHintTextBlock.Text = AppStrings.Get("DropPrompt");
         LoadingTextBlock.Text = AppStrings.Get("Loading");
         SplashTitleTextBlock.Text = AppStrings.Get("SplashTitle");
-    }
-
-    private void OnThemeSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        if (!_isInitialized)
-        {
-            return;
-        }
-
-        var preference = SettingsThemeComboBox.SelectedIndex switch
-        {
-            1 => ThemePreference.Light,
-            2 => ThemePreference.Dark,
-            _ => ThemePreference.System
-        };
-
-        if (Application.Current is App app)
-        {
-            app.SetThemePreference(preference);
-        }
-
-        _settings = _settings with { Theme = preference };
-    }
-
-    private void OnLanguageSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        if (!_isInitialized)
-        {
-            return;
-        }
-
-        var language = SettingsLanguageComboBox.SelectedIndex == 1 ? "en" : "ja";
-        AppStrings.CurrentCulture = new CultureInfo(language);
-        _settings = _settings with { Language = language };
-        ApplyLocalizedText();
     }
 
     private void InitializeAnnotationTooling()
@@ -3425,6 +3513,12 @@ public partial class MainWindow : Window
     }
 
     private void RebuildRecentFilesMenu()
+    {
+        RecentFilesButton.ContextMenu = new ContextMenu { ItemsSource = BuildRecentFileMenuItems() };
+        FileRecentMenuItem.ItemsSource = BuildRecentFileMenuItems();
+    }
+
+    private IReadOnlyList<object> BuildRecentFileMenuItems()
     {
         var items = new List<object>();
         foreach (var file in _settingsService.GetRecentFiles())
@@ -3439,7 +3533,7 @@ public partial class MainWindow : Window
             items.Add(new MenuItem { Header = "(履歴なし)", IsEnabled = false });
         }
 
-        RecentFilesButton.ContextMenu = new ContextMenu { ItemsSource = items };
+        return items;
     }
 
     private void RebuildSplitTabSelectors()

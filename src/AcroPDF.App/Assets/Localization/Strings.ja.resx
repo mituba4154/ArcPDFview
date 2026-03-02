@@ -39,4 +39,19 @@
   <data name="SplashTitle" xml:space="preserve">
     <value>AcroPDF</value>
   </data>
+  <data name="ToolHighlight" xml:space="preserve">
+    <value>ハイライト</value>
+  </data>
+  <data name="ToolComment" xml:space="preserve">
+    <value>コメント</value>
+  </data>
+  <data name="ToolFreehand" xml:space="preserve">
+    <value>手書き</value>
+  </data>
+  <data name="ToolShape" xml:space="preserve">
+    <value>図形</value>
+  </data>
+  <data name="ToolStamp" xml:space="preserve">
+    <value>スタンプ</value>
+  </data>
 </root>
