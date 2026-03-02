@@ -18,6 +18,15 @@
   <data name="Recent" xml:space="preserve">
     <value>最近</value>
   </data>
+  <data name="Settings" xml:space="preserve">
+    <value>設定</value>
+  </data>
+  <data name="Theme" xml:space="preserve">
+    <value>テーマ</value>
+  </data>
+  <data name="Language" xml:space="preserve">
+    <value>言語</value>
+  </data>
   <data name="DropPrompt" xml:space="preserve">
     <value>ここにドロップ</value>
   </data>

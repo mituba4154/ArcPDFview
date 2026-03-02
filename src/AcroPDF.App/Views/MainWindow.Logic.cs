@@ -3344,18 +3344,25 @@ public partial class MainWindow : Window
     private void ApplySettingsToToolbar()
     {
         ZoomComboBox.SelectedIndex = 3;
-        ThemeComboBox.SelectedIndex = _settings.Theme switch
+        SettingsThemeComboBox.SelectedIndex = _settings.Theme switch
         {
             ThemePreference.Light => 1,
             ThemePreference.Dark => 2,
             _ => 0
         };
+
+        SettingsLanguageComboBox.SelectedIndex = string.Equals(_settings.Language, "en", StringComparison.OrdinalIgnoreCase)
+            ? 1
+            : 0;
     }
 
     private void ApplyLocalizedText()
     {
         OpenFileButton.Content = AppStrings.Get("Open");
         RecentFilesButton.Content = AppStrings.Get("Recent");
+        SettingsButton.Content = AppStrings.Get("Settings");
+        ThemeLabelTextBlock.Text = AppStrings.Get("Theme");
+        LanguageLabelTextBlock.Text = AppStrings.Get("Language");
         EmptyStateTextBlock.Text = AppStrings.Get("EmptyState");
         DragDropHintTextBlock.Text = AppStrings.Get("DropPrompt");
         LoadingTextBlock.Text = AppStrings.Get("Loading");
@@ -3369,7 +3376,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var preference = ThemeComboBox.SelectedIndex switch
+        var preference = SettingsThemeComboBox.SelectedIndex switch
         {
             1 => ThemePreference.Light,
             2 => ThemePreference.Dark,
@@ -3382,6 +3389,19 @@ public partial class MainWindow : Window
         }
 
         _settings = _settings with { Theme = preference };
+    }
+
+    private void OnLanguageSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (!_isInitialized)
+        {
+            return;
+        }
+
+        var language = SettingsLanguageComboBox.SelectedIndex == 1 ? "en" : "ja";
+        AppStrings.CurrentCulture = new CultureInfo(language);
+        _settings = _settings with { Language = language };
+        ApplyLocalizedText();
     }
 
     private void InitializeAnnotationTooling()

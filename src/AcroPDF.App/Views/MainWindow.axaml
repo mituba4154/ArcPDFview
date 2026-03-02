@@ -25,7 +25,7 @@
       <Setter Property="BorderThickness" Value="2" />
     </Style>
   </Window.Styles>
-  <Grid RowDefinitions="36,40,*,22"
+  <Grid RowDefinitions="36,Auto,*,22"
         KeyboardNavigation.TabNavigation="Cycle">
     <Border Grid.Row="0"
             Background="{DynamicResource BgDarkBrush}"
@@ -55,10 +55,14 @@
             Background="{DynamicResource BgToolbarBrush}"
             BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="0,0,0,1">
-      <Grid ColumnDefinitions="Auto,*,Auto,Auto"
-            Margin="8,4">
+      <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                    VerticalScrollBarVisibility="Disabled">
         <StackPanel Orientation="Horizontal"
-                    Spacing="4">
+                    Margin="8,4"
+                    Spacing="14">
+        <StackPanel Orientation="Horizontal"
+                    Spacing="4"
+                    VerticalAlignment="Center">
           <Button x:Name="OpenFileButton"
                   Content="開く"
                   Padding="10,2"
@@ -140,10 +144,10 @@
           </ComboBox>
         </StackPanel>
 
-        <StackPanel Grid.Column="1"
+        <StackPanel
                     Orientation="Horizontal"
-                    HorizontalAlignment="Center"
-                    Spacing="4">
+                    Spacing="4"
+                    VerticalAlignment="Center">
           <Button Content="⟨⟨"
                   Width="30"
                   automation:AutomationProperties.Name="先頭ページへ移動"
@@ -172,9 +176,10 @@
                   Click="OnLastPageClicked" />
         </StackPanel>
 
-        <StackPanel Grid.Column="2"
+        <StackPanel
                     Orientation="Horizontal"
-                    Spacing="4">
+                    Spacing="4"
+                    VerticalAlignment="Center">
           <Button Content="−"
                   Width="30"
                   automation:AutomationProperties.Name="ズームアウト"
@@ -202,10 +207,10 @@
                   Click="OnZoomInClicked" />
         </StackPanel>
 
-        <StackPanel Grid.Column="3"
+        <StackPanel
                     Orientation="Horizontal"
-                    Margin="8,0,0,0"
-                    Spacing="4">
+                    Spacing="4"
+                    VerticalAlignment="Center">
           <ToggleButton x:Name="SinglePageModeButton"
                         Content="▣ 単ページ"
                         automation:AutomationProperties.Name="単ページモード"
@@ -230,17 +235,42 @@
                   Content="🖨 印刷"
                   automation:AutomationProperties.Name="印刷"
                   Click="OnPrintClicked" />
-          <ComboBox x:Name="ThemeComboBox"
-                    Width="110"
-                    SelectedIndex="0"
-                    automation:AutomationProperties.Name="テーマ選択"
-                    SelectionChanged="OnThemeSelectionChanged">
-            <ComboBoxItem Content="OS" />
-            <ComboBoxItem Content="Light" />
-            <ComboBoxItem Content="Dark" />
-          </ComboBox>
+          <Button x:Name="SettingsButton"
+                  Content="設定"
+                  automation:AutomationProperties.Name="表示設定を開く">
+            <Button.Flyout>
+              <Flyout Placement="BottomEdgeAlignedRight">
+                <StackPanel Margin="8"
+                            Spacing="8"
+                            MinWidth="190">
+                  <TextBlock x:Name="ThemeLabelTextBlock"
+                             Text="テーマ"
+                             Foreground="{DynamicResource TextPrimaryBrush}" />
+                  <ComboBox x:Name="SettingsThemeComboBox"
+                            SelectedIndex="0"
+                            automation:AutomationProperties.Name="テーマ選択"
+                            SelectionChanged="OnThemeSelectionChanged">
+                    <ComboBoxItem Content="OS" />
+                    <ComboBoxItem Content="Light" />
+                    <ComboBoxItem Content="Dark" />
+                  </ComboBox>
+                  <TextBlock x:Name="LanguageLabelTextBlock"
+                             Text="言語"
+                             Foreground="{DynamicResource TextPrimaryBrush}" />
+                  <ComboBox x:Name="SettingsLanguageComboBox"
+                            SelectedIndex="0"
+                            automation:AutomationProperties.Name="言語選択"
+                            SelectionChanged="OnLanguageSelectionChanged">
+                    <ComboBoxItem Content="日本語" />
+                    <ComboBoxItem Content="English" />
+                  </ComboBox>
+                </StackPanel>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
         </StackPanel>
-      </Grid>
+      </StackPanel>
+      </ScrollViewer>
     </Border>
 
     <Grid Grid.Row="2"
