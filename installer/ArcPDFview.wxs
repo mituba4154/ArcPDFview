@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="ArcPDFview"
+    Manufacturer="ArcPDFview"
+    Version="1.0.0"
+    UpgradeCode="{49E0AF24-34AA-4AAF-9CA8-C17A2E16E7F7}">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of ArcPDFview is already installed." />
+    <MediaTemplate />
+
+    <Property Id="INSTALLDESKTOPSHORTCUT" Value="0" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="ArcPDFview" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ProgramMenuDir" Name="ArcPDFview" />
+    </StandardDirectory>
+    <StandardDirectory Id="DesktopFolder" />
+
+    <Feature Id="MainFeature" Title="ArcPDFview" Level="1">
+      <ComponentGroupRef Id="ApplicationFiles" />
+      <ComponentRef Id="ProgramMenuShortcutComponent" />
+      <ComponentRef Id="DesktopShortcutComponent" />
+      <ComponentRef Id="PdfAssociationComponent" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="ApplicationFiles" Directory="INSTALLFOLDER">
+      <Component Id="MainExecutableComponent">
+        <File Id="AppExecutable" Source="!(bindpath.PublishDir)\AcroPDF.App.exe" KeyPath="yes" />
+      </Component>
+      <Files Include="!(bindpath.PublishDir)\**">
+        <Exclude Files="!(bindpath.PublishDir)\AcroPDF.App.exe" />
+      </Files>
+    </ComponentGroup>
+  </Fragment>
+
+  <Fragment>
+    <Component Id="ProgramMenuShortcutComponent" Directory="ProgramMenuDir">
+      <Shortcut
+        Id="ProgramMenuShortcut"
+        Name="ArcPDFview"
+        Target="[#AppExecutable]"
+        WorkingDirectory="INSTALLFOLDER" />
+      <RemoveFolder Id="ProgramMenuDir" On="uninstall" />
+      <RegistryValue Root="HKCU" Key="Software\ArcPDFview" Name="ProgramMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+  </Fragment>
+
+  <Fragment>
+    <Component Id="DesktopShortcutComponent" Directory="DesktopFolder" Condition="INSTALLDESKTOPSHORTCUT = 1">
+      <Shortcut
+        Id="DesktopShortcut"
+        Name="ArcPDFview"
+        Target="[#AppExecutable]"
+        WorkingDirectory="INSTALLFOLDER" />
+      <RegistryValue Root="HKCU" Key="Software\ArcPDFview" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+  </Fragment>
+
+  <Fragment>
+    <Component Id="PdfAssociationComponent" Directory="INSTALLFOLDER">
+      <RegistryValue Root="HKCU" Key="Software\Classes\.pdf\OpenWithProgids" Name="ArcPDFview.PDF" Value="" Type="string" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\ArcPDFview.PDF" Value="ArcPDFview PDF Document" Type="string" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\ArcPDFview.PDF\DefaultIcon" Value="[#AppExecutable],0" Type="string" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\ArcPDFview.PDF\shell\open\command" Value="&quot;[#AppExecutable]&quot; &quot;%1&quot;" Type="string" KeyPath="yes" />
+    </Component>
+  </Fragment>
+</Wix>

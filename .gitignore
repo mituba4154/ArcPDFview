@@ -5,3 +5,5 @@ TestResults/
 # Rider / VSCode local settings
 .idea/
 .vscode/
+
+publish/

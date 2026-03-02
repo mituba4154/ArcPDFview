@@ -105,17 +105,27 @@ public class TabViewModelTests
         Assert.False(tab.IsContinuousMode);
     }
 
-    [Theory]
-    [InlineData(90, 90)]
-    [InlineData(450, 90)]
-    [InlineData(-90, 270)]
-    public void RotationDegrees_NormalizesToRightAngle(int input, int expected)
+    [Fact]
+    public void RotationDegrees_Setter_DoesNotNormalize()
     {
         using var tab = new TabViewModel(CreateDocument(1));
 
-        tab.RotationDegrees = input;
+        tab.RotationDegrees = 450;
+        Assert.Equal(450, tab.RotationDegrees);
 
-        Assert.Equal(expected, tab.RotationDegrees);
+        tab.RotationDegrees = -90;
+        Assert.Equal(-90, tab.RotationDegrees);
+    }
+
+    [Fact]
+    public void RotateClockwiseCommand_NormalizesToRightAngle()
+    {
+        using var tab = new TabViewModel(CreateDocument(1));
+        tab.RotationDegrees = 270;
+
+        tab.RotateClockwiseCommand.Execute(null);
+
+        Assert.Equal(0, tab.RotationDegrees);
     }
 
     [Fact]
