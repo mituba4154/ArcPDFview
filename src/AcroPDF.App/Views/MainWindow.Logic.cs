@@ -554,6 +554,7 @@ public partial class MainWindow : Window
     {
         if (state.PageControl is not null)
         {
+            // 白ページ化を避けるため、表示中ビットマップは維持したままマッピングのみ更新する。
             _continuousPageMap[state.PageControl] = (state.Tab, state.Page);
         }
 
@@ -3040,7 +3041,7 @@ public partial class MainWindow : Window
 
     private async void OnAboutMenuItemClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        var dialog = CreateStyledDialog("バージョン情報", DialogSeverity.Information, 360, 180);
+        var dialog = CreateStyledDialog(AppStrings.Get("About"), DialogSeverity.Information, 360, 180);
         dialog.Content = new StackPanel
         {
             Margin = new Thickness(16),
@@ -3497,6 +3498,10 @@ public partial class MainWindow : Window
         FreehandToolLabelTextBlock.Text = AppStrings.Get("ToolFreehand");
         ShapeToolLabelTextBlock.Text = AppStrings.Get("ToolShape");
         StampToolLabelTextBlock.Text = AppStrings.Get("ToolStamp");
+        ThumbnailTabLabelTextBlock.Text = AppStrings.Get("SidebarThumbnail");
+        BookmarkTabLabelTextBlock.Text = AppStrings.Get("SidebarBookmark");
+        AnnotationTabLabelTextBlock.Text = AppStrings.Get("SidebarAnnotation");
+        AttachmentTabLabelTextBlock.Text = AppStrings.Get("SidebarAttachment");
         EmptyStateTextBlock.Text = AppStrings.Get("EmptyState");
         DragDropHintTextBlock.Text = AppStrings.Get("DropPrompt");
         LoadingTextBlock.Text = AppStrings.Get("Loading");
@@ -3530,7 +3535,7 @@ public partial class MainWindow : Window
 
         if (items.Count == 0)
         {
-            items.Add(new MenuItem { Header = "(履歴なし)", IsEnabled = false });
+            items.Add(new MenuItem { Header = AppStrings.Get("NoRecentFiles"), IsEnabled = false });
         }
 
         return items;

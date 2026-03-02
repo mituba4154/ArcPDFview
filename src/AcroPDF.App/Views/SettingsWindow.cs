@@ -38,7 +38,7 @@ public sealed class SettingsWindow : Window
 
         _themeComboBox = new ComboBox
         {
-            ItemsSource = new[] { "OS", "Light", "Dark" },
+            ItemsSource = new[] { AppStrings.Get("ThemeSystem"), AppStrings.Get("ThemeLight"), AppStrings.Get("ThemeDark") },
             SelectedIndex = settings.Theme switch
             {
                 ThemePreference.Light => 1,
@@ -48,7 +48,7 @@ public sealed class SettingsWindow : Window
         };
         _languageComboBox = new ComboBox
         {
-            ItemsSource = new[] { "日本語", "English" },
+            ItemsSource = new[] { AppStrings.Get("LanguageJa"), AppStrings.Get("LanguageEn") },
             SelectedIndex = string.Equals(settings.Language, "en", StringComparison.OrdinalIgnoreCase) ? 1 : 0
         };
         _defaultZoomComboBox = new ComboBox
@@ -58,7 +58,7 @@ public sealed class SettingsWindow : Window
         };
         _defaultViewModeComboBox = new ComboBox
         {
-            ItemsSource = new[] { "単ページ", "連続", "見開き" },
+            ItemsSource = new[] { AppStrings.Get("ViewModeSingle"), AppStrings.Get("ViewModeContinuous"), AppStrings.Get("ViewModeTwoPage") },
             SelectedIndex = settings.DefaultViewMode switch
             {
                 ViewMode.SinglePage => 0,
@@ -68,13 +68,13 @@ public sealed class SettingsWindow : Window
         };
         _restoreSessionCheckBox = new CheckBox
         {
-            Content = "起動時にセッションを復元",
+            Content = AppStrings.Get("RestoreSessionOnStartup"),
             IsChecked = settings.RestoreSessionOnStartup
         };
 
         var applyButton = new Button
         {
-            Content = "適用",
+            Content = AppStrings.Get("Apply"),
             Width = 90,
             HorizontalAlignment = HorizontalAlignment.Right
         };
@@ -94,9 +94,9 @@ public sealed class SettingsWindow : Window
                 _themeComboBox,
                 BuildLabel(AppStrings.Get("Language")),
                 _languageComboBox,
-                BuildLabel("既定ズーム"),
+                BuildLabel(AppStrings.Get("DefaultZoom")),
                 _defaultZoomComboBox,
-                BuildLabel("既定表示モード"),
+                BuildLabel(AppStrings.Get("DefaultViewMode")),
                 _defaultViewModeComboBox,
                 _restoreSessionCheckBox,
                 applyButton

@@ -54,4 +54,58 @@
   <data name="ToolStamp" xml:space="preserve">
     <value>Stamp</value>
   </data>
+  <data name="SidebarThumbnail" xml:space="preserve">
+    <value>Thumb</value>
+  </data>
+  <data name="SidebarBookmark" xml:space="preserve">
+    <value>Outline</value>
+  </data>
+  <data name="SidebarAnnotation" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="SidebarAttachment" xml:space="preserve">
+    <value>Files</value>
+  </data>
+  <data name="About" xml:space="preserve">
+    <value>About</value>
+  </data>
+  <data name="Apply" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="DefaultZoom" xml:space="preserve">
+    <value>Default zoom</value>
+  </data>
+  <data name="DefaultViewMode" xml:space="preserve">
+    <value>Default view mode</value>
+  </data>
+  <data name="RestoreSessionOnStartup" xml:space="preserve">
+    <value>Restore session on startup</value>
+  </data>
+  <data name="ViewModeSingle" xml:space="preserve">
+    <value>Single page</value>
+  </data>
+  <data name="ViewModeContinuous" xml:space="preserve">
+    <value>Continuous</value>
+  </data>
+  <data name="ViewModeTwoPage" xml:space="preserve">
+    <value>Two-page spread</value>
+  </data>
+  <data name="LanguageJa" xml:space="preserve">
+    <value>Japanese</value>
+  </data>
+  <data name="LanguageEn" xml:space="preserve">
+    <value>English</value>
+  </data>
+  <data name="ThemeSystem" xml:space="preserve">
+    <value>System</value>
+  </data>
+  <data name="ThemeLight" xml:space="preserve">
+    <value>Light</value>
+  </data>
+  <data name="ThemeDark" xml:space="preserve">
+    <value>Dark</value>
+  </data>
+  <data name="NoRecentFiles" xml:space="preserve">
+    <value>(No history)</value>
+  </data>
 </root>

@@ -54,4 +54,58 @@
   <data name="ToolStamp" xml:space="preserve">
     <value>スタンプ</value>
   </data>
+  <data name="SidebarThumbnail" xml:space="preserve">
+    <value>サムネ</value>
+  </data>
+  <data name="SidebarBookmark" xml:space="preserve">
+    <value>目次</value>
+  </data>
+  <data name="SidebarAnnotation" xml:space="preserve">
+    <value>注釈</value>
+  </data>
+  <data name="SidebarAttachment" xml:space="preserve">
+    <value>添付</value>
+  </data>
+  <data name="About" xml:space="preserve">
+    <value>バージョン情報</value>
+  </data>
+  <data name="Apply" xml:space="preserve">
+    <value>適用</value>
+  </data>
+  <data name="DefaultZoom" xml:space="preserve">
+    <value>既定ズーム</value>
+  </data>
+  <data name="DefaultViewMode" xml:space="preserve">
+    <value>既定表示モード</value>
+  </data>
+  <data name="RestoreSessionOnStartup" xml:space="preserve">
+    <value>起動時にセッションを復元</value>
+  </data>
+  <data name="ViewModeSingle" xml:space="preserve">
+    <value>単ページ</value>
+  </data>
+  <data name="ViewModeContinuous" xml:space="preserve">
+    <value>連続</value>
+  </data>
+  <data name="ViewModeTwoPage" xml:space="preserve">
+    <value>見開き</value>
+  </data>
+  <data name="LanguageJa" xml:space="preserve">
+    <value>日本語</value>
+  </data>
+  <data name="LanguageEn" xml:space="preserve">
+    <value>English</value>
+  </data>
+  <data name="ThemeSystem" xml:space="preserve">
+    <value>OS</value>
+  </data>
+  <data name="ThemeLight" xml:space="preserve">
+    <value>Light</value>
+  </data>
+  <data name="ThemeDark" xml:space="preserve">
+    <value>Dark</value>
+  </data>
+  <data name="NoRecentFiles" xml:space="preserve">
+    <value>(履歴なし)</value>
+  </data>
 </root>

@@ -315,7 +315,7 @@
             <TabItem.Header>
               <StackPanel Orientation="Vertical" Spacing="0">
                 <TextBlock Text="▤" HorizontalAlignment="Center" />
-                <TextBlock FontSize="9" Text="サムネ" HorizontalAlignment="Center" />
+                <TextBlock x:Name="ThumbnailTabLabelTextBlock" FontSize="9" Text="サムネ" HorizontalAlignment="Center" />
               </StackPanel>
             </TabItem.Header>
             <ScrollViewer x:Name="ThumbnailScrollViewer"
@@ -330,7 +330,7 @@
             <TabItem.Header>
               <StackPanel Orientation="Vertical" Spacing="0">
                 <TextBlock Text="≡" HorizontalAlignment="Center" />
-                <TextBlock FontSize="9" Text="目次" HorizontalAlignment="Center" />
+                <TextBlock x:Name="BookmarkTabLabelTextBlock" FontSize="9" Text="目次" HorizontalAlignment="Center" />
               </StackPanel>
             </TabItem.Header>
             <ScrollViewer x:Name="BookmarkScrollViewer"
@@ -345,7 +345,7 @@
             <TabItem.Header>
               <StackPanel Orientation="Vertical" Spacing="0">
                 <TextBlock Text="💬" HorizontalAlignment="Center" />
-                <TextBlock FontSize="9" Text="注釈" HorizontalAlignment="Center" />
+                <TextBlock x:Name="AnnotationTabLabelTextBlock" FontSize="9" Text="注釈" HorizontalAlignment="Center" />
               </StackPanel>
             </TabItem.Header>
             <Grid RowDefinitions="Auto,*,Auto"
@@ -391,7 +391,7 @@
             <TabItem.Header>
               <StackPanel Orientation="Vertical" Spacing="0">
                 <TextBlock Text="🔗" HorizontalAlignment="Center" />
-                <TextBlock FontSize="9" Text="添付" HorizontalAlignment="Center" />
+                <TextBlock x:Name="AttachmentTabLabelTextBlock" FontSize="9" Text="添付" HorizontalAlignment="Center" />
               </StackPanel>
             </TabItem.Header>
             <DockPanel Margin="8">
