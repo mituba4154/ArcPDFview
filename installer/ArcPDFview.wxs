@@ -31,10 +31,10 @@
       <Component Id="MainExecutableComponent">
         <File Id="AppExecutable" Source="!(bindpath.PublishDir)\AcroPDF.App.exe" KeyPath="yes" />
       </Component>
-      <Files Include="!(bindpath.PublishDir)\**">
-        <Exclude Files="!(bindpath.PublishDir)\AcroPDF.App.exe" />
-      </Files>
     </ComponentGroup>
+    <Files Include="!(bindpath.PublishDir)\**" Directory="INSTALLFOLDER">
+      <Exclude Files="!(bindpath.PublishDir)\AcroPDF.App.exe" />
+    </Files>
   </Fragment>
 
   <Fragment>
