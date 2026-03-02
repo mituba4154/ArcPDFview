@@ -112,15 +112,16 @@ jobs:
           cp icon-256.png AppDir/arcpdfview.png
           cp icon-256.png AppDir/.DirIcon
           cat > AppDir/arcpdfview.desktop <<'EOF'
-[Desktop Entry]
-Type=Application
-Name=ArcPDFview
-Comment=Lightweight PDF Viewer
-Exec=AcroPDF.App
-Icon=arcpdfview
-Categories=Office;Viewer;
-Terminal=false
-EOF
+          [Desktop Entry]
+          Type=Application
+          Name=ArcPDFview
+          Comment=Lightweight PDF Viewer
+          Exec=AcroPDF.App
+          Icon=arcpdfview
+          Categories=Office;Viewer;
+          Terminal=false
+          EOF
+          
           cp AppDir/arcpdfview.desktop AppDir/usr/share/applications/arcpdfview.desktop
           printf '#!/usr/bin/env bash\nexec "$(dirname "$0")/usr/bin/AcroPDF.App" "$@"\n' \
             > AppDir/AppRun
