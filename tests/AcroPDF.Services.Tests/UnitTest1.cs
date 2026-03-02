@@ -152,4 +152,78 @@ public class PdfiumRenderServiceTests
         Assert.NotNull(values);
         return values!.ToArray();
     }
+
+    [Fact]
+    public async Task RunOnPdfiumThread_ReturnsResult()
+    {
+        var genericMethod = GetRunOnPdfiumThreadGeneric<int>();
+
+        var task = (Task<int>)genericMethod.Invoke(null, [new Func<int>(() => 42)])!;
+        var result = await task;
+
+        Assert.Equal(42, result);
+    }
+
+    [Fact]
+    public async Task RunOnPdfiumThread_PropagatesException()
+    {
+        var genericMethod = GetRunOnPdfiumThreadGeneric<int>();
+
+        var task = (Task<int>)genericMethod.Invoke(null, [new Func<int>(() => throw new InvalidOperationException("test error"))])!;
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => task);
+        Assert.Equal("test error", ex.Message);
+    }
+
+    [Fact]
+    public void DocumentLoadContext_AccessInfoPtr_IsNonZero()
+    {
+        var contextType = typeof(PdfiumRenderService).GetNestedType("DocumentLoadContext", BindingFlags.NonPublic);
+        Assert.NotNull(contextType);
+
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(tempFile, "dummy");
+            var context = (IDisposable)Activator.CreateInstance(contextType!, tempFile)!;
+            try
+            {
+                var accessInfoPtrProp = contextType!.GetProperty("AccessInfoPtr", BindingFlags.Public | BindingFlags.Instance);
+                Assert.NotNull(accessInfoPtrProp);
+                var ptr = (IntPtr)accessInfoPtrProp!.GetValue(context)!;
+                Assert.NotEqual(IntPtr.Zero, ptr);
+            }
+            finally
+            {
+                context.Dispose();
+            }
+        }
+        finally
+        {
+            if (File.Exists(tempFile))
+            {
+                File.Delete(tempFile);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RunOnPdfiumThread_ActionOverload_Completes()
+    {
+        var method = typeof(PdfiumRenderService).GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+            .First(m => m.Name == "RunOnPdfiumThread" && !m.IsGenericMethod);
+
+        var executed = false;
+        var task = (Task)method.Invoke(null, [new Action(() => executed = true)])!;
+        await task;
+
+        Assert.True(executed);
+    }
+
+    private static MethodInfo GetRunOnPdfiumThreadGeneric<T>()
+    {
+        return typeof(PdfiumRenderService).GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+            .First(m => m.Name == "RunOnPdfiumThread" && m.IsGenericMethod)
+            .MakeGenericMethod(typeof(T));
+    }
 }

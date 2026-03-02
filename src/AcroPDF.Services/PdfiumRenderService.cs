@@ -85,7 +85,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) == 1, this);
 
-        return Task.Run(() =>
+        return RunOnPdfiumThread(() =>
         {
             EnsureLibraryInitialized();
             ct.ThrowIfCancellationRequested();
@@ -97,7 +97,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
             }
 
             var loadContext = new DocumentLoadContext(filePath);
-            var documentHandle = NativeMethods.FPDF_LoadCustomDocument(ref loadContext.AccessInfo, password);
+            var documentHandle = NativeMethods.FPDF_LoadCustomDocument(loadContext.AccessInfoPtr, password);
             if (documentHandle == IntPtr.Zero)
             {
                 loadContext.Dispose();
@@ -157,7 +157,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
             }
 
             return document;
-        }, ct);
+        });
     }
 
     /// <inheritdoc />
@@ -165,7 +165,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) == 1, this);
 
-        return Task.Run(() =>
+        return RunOnPdfiumThread(() =>
         {
             EnsureLibraryInitialized();
             ct.ThrowIfCancellationRequested();
@@ -181,7 +181,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
 
             QueueAdjacentPrefetch(page, normalizedZoom);
             return rendered;
-        }, ct);
+        });
     }
 
     /// <inheritdoc />
@@ -189,7 +189,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) == 1, this);
         var printDpi = Math.Clamp(dpi, 72, 600);
-        return Task.Run(() => RenderPageInternal(page, printDpi, useCache: false), ct);
+        return RunOnPdfiumThread(() => RenderPageInternal(page, printDpi, useCache: false));
     }
 
     /// <inheritdoc />
@@ -199,7 +199,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
         ArgumentNullException.ThrowIfNull(pageNumbers);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
 
-        return Task.Run(() =>
+        return RunOnPdfiumThread(() =>
         {
             ct.ThrowIfCancellationRequested();
             var sourcePages = NormalizePageNumbers(pageNumbers, document.PageCount);
@@ -224,7 +224,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
             {
                 NativeMethods.FPDF_CloseDocument(newDocument);
             }
-        }, ct);
+        });
     }
 
     /// <inheritdoc />
@@ -233,7 +233,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(pageNumbers);
 
-        return Task.Run(() =>
+        return RunOnPdfiumThread(() =>
         {
             ct.ThrowIfCancellationRequested();
             var deletePages = NormalizePageNumbers(pageNumbers, document.PageCount);
@@ -265,7 +265,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
             {
                 NativeMethods.FPDF_CloseDocument(newDocument);
             }
-        }, ct);
+        });
     }
 
     /// <inheritdoc />
@@ -274,7 +274,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(pageNumbers);
 
-        return Task.Run(() =>
+        return RunOnPdfiumThread(() =>
         {
             ct.ThrowIfCancellationRequested();
             var pages = NormalizePageNumbers(pageNumbers, document.PageCount);
@@ -319,7 +319,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
             {
                 NativeMethods.FPDF_CloseDocument(newDocument);
             }
-        }, ct);
+        });
     }
 
     /// <inheritdoc />
@@ -328,7 +328,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
         ArgumentNullException.ThrowIfNull(inputFilePaths);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
 
-        return Task.Run(() =>
+        return RunOnPdfiumThread(() =>
         {
             ct.ThrowIfCancellationRequested();
             var existingInputs = inputFilePaths
@@ -390,7 +390,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
             {
                 NativeMethods.FPDF_CloseDocument(destination);
             }
-        }, ct);
+        });
     }
 
     /// <inheritdoc />
@@ -399,7 +399,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(pageOrder);
 
-        return Task.Run(() =>
+        return RunOnPdfiumThread(() =>
         {
             ct.ThrowIfCancellationRequested();
             var normalizedOrder = pageOrder
@@ -431,7 +431,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
             {
                 NativeMethods.FPDF_CloseDocument(newDocument);
             }
-        }, ct);
+        });
     }
 
     /// <inheritdoc />
@@ -439,7 +439,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
     {
         ArgumentNullException.ThrowIfNull(document);
 
-        return Task.Run<IReadOnlyList<PdfEmbeddedFile>>(() =>
+        return RunOnPdfiumThread<IReadOnlyList<PdfEmbeddedFile>>(() =>
         {
             ct.ThrowIfCancellationRequested();
             var count = NativeMethods.FPDFDoc_GetAttachmentCount(document.NativeHandle);
@@ -469,7 +469,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
             }
 
             return files;
-        }, ct);
+        });
     }
 
     /// <inheritdoc />
@@ -479,7 +479,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
         ArgumentNullException.ThrowIfNull(file);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
 
-        return Task.Run(() =>
+        return RunOnPdfiumThread(() =>
         {
             ct.ThrowIfCancellationRequested();
             if (!int.TryParse(file.Id, out var index))
@@ -508,7 +508,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
             }
 
             File.WriteAllBytes(outputPath, buffer.AsSpan(0, (int)outLength).ToArray());
-        }, ct);
+        });
     }
 
     /// <inheritdoc />
@@ -516,7 +516,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
     {
         ArgumentNullException.ThrowIfNull(document);
 
-        return Task.Run(() =>
+        return RunOnPdfiumThread(() =>
         {
             ct.ThrowIfCancellationRequested();
             var permissions = NativeMethods.FPDF_GetDocPermissions(document.NativeHandle);
@@ -532,7 +532,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
                 CanCopy = unrestricted || (permissions & PermissionCopy) != 0,
                 CanAnnotate = unrestricted || (permissions & PermissionAnnotate) != 0 || (permissions & PermissionModify) != 0
             };
-        }, ct);
+        });
     }
 
     /// <inheritdoc />
@@ -588,7 +588,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
     public Task<IReadOnlyList<PdfFormField>> GetFormFieldsAsync(PdfPage page, CancellationToken ct = default)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) == 1, this);
-        return Task.Run<IReadOnlyList<PdfFormField>>(() =>
+        return RunOnPdfiumThread<IReadOnlyList<PdfFormField>>(() =>
         {
             ct.ThrowIfCancellationRequested();
             var pageHandle = NativeMethods.FPDF_LoadPage(page.DocumentHandle, page.PageIndex);
@@ -650,7 +650,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
             }
 
             return fields;
-        }, ct);
+        });
     }
 
     /// <inheritdoc />
@@ -664,7 +664,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
         ArgumentNullException.ThrowIfNull(field);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) == 1, this);
 
-        return Task.Run(() =>
+        return RunOnPdfiumThread(() =>
         {
             ct.ThrowIfCancellationRequested();
             var formHandle = GetOrCreateFormHandle(page.DocumentHandle);
@@ -708,7 +708,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
             {
                 NativeMethods.FPDF_ClosePage(pageHandle);
             }
-        }, ct);
+        });
     }
 
     /// <inheritdoc />
@@ -749,6 +749,57 @@ public sealed class PdfiumRenderService : IPdfRenderService
         }
 
         _documentLoadContexts.Clear();
+    }
+
+    /// <summary>
+    /// PDFium の呼び出しを専用スレッド（64MB スタック）で実行します。
+    /// スレッドプールの既定スタックサイズ (1MB) では PDFium の深い再帰で
+    /// スタックオーバーフローが発生する可能性があるため、大きいスタックを確保します。
+    /// </summary>
+    private static Task<T> RunOnPdfiumThread<T>(Func<T> func)
+    {
+        var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                tcs.SetResult(func());
+            }
+            catch (Exception ex)
+            {
+                tcs.SetException(ex);
+            }
+        }, 64 * 1024 * 1024)
+        {
+            IsBackground = true
+        };
+        thread.Start();
+        return tcs.Task;
+    }
+
+    /// <summary>
+    /// PDFium の呼び出しを専用スレッド（64MB スタック）で実行します（戻り値なし版）。
+    /// </summary>
+    private static Task RunOnPdfiumThread(Action action)
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                action();
+                tcs.SetResult();
+            }
+            catch (Exception ex)
+            {
+                tcs.SetException(ex);
+            }
+        }, 64 * 1024 * 1024)
+        {
+            IsBackground = true
+        };
+        thread.Start();
+        return tcs.Task;
     }
 
     private SKBitmap RenderPageInternal(PdfPage page, double dpi, bool useCache)
@@ -836,7 +887,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
             return;
         }
 
-        _ = Task.Run(() =>
+        _ = RunOnPdfiumThread(() =>
         {
             var renderDpi = 96d * zoomLevel;
             foreach (var pageIndex in new[] { centerPage.PageIndex - 1, centerPage.PageIndex + 1 })
@@ -1330,7 +1381,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
         public static extern IntPtr FPDF_LoadDocument([MarshalAs(UnmanagedType.LPUTF8Str)] string file_path, [MarshalAs(UnmanagedType.LPUTF8Str)] string? password);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern IntPtr FPDF_LoadCustomDocument(ref FPDF_FILEACCESS fileAccess, [MarshalAs(UnmanagedType.LPUTF8Str)] string? password);
+        public static extern IntPtr FPDF_LoadCustomDocument(IntPtr fileAccess, [MarshalAs(UnmanagedType.LPUTF8Str)] string? password);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
         public static extern IntPtr FPDF_CreateNewDocument();
@@ -1552,6 +1603,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
         private readonly FileStream _stream;
         private readonly object _sync = new();
         private readonly GCHandle _selfHandle;
+        private readonly IntPtr _accessInfoPtr;
         private bool _disposed;
 
         public DocumentLoadContext(string filePath)
@@ -1564,15 +1616,19 @@ public sealed class PdfiumRenderService : IPdfRenderService
 
             GetBlock = ReadBlock;
             _selfHandle = GCHandle.Alloc(this, GCHandleType.Normal);
-            AccessInfo = new FPDF_FILEACCESS
+            var accessInfo = new FPDF_FILEACCESS
             {
                 m_FileLen = checked((uint)_stream.Length),
                 m_GetBlock = Marshal.GetFunctionPointerForDelegate(GetBlock),
                 m_Param = GCHandle.ToIntPtr(_selfHandle)
             };
+
+            _accessInfoPtr = Marshal.AllocHGlobal(Marshal.SizeOf<FPDF_FILEACCESS>());
+            Marshal.StructureToPtr(accessInfo, _accessInfoPtr, false);
         }
 
-        public FPDF_FILEACCESS AccessInfo;
+        /// <summary>アンマネージドメモリ上に固定された FPDF_FILEACCESS へのポインタ。</summary>
+        public IntPtr AccessInfoPtr => _accessInfoPtr;
 
         public GetBlockCallback GetBlock { get; }
 
@@ -1585,6 +1641,14 @@ public sealed class PdfiumRenderService : IPdfRenderService
 
             _disposed = true;
             _stream.Dispose();
+
+            // アンマネージド FPDF_FILEACCESS を先に解放し、次に GCHandle を解放する。
+            // FPDF_FILEACCESS 内の m_Param が GCHandle を指しているため、この順序を守る。
+            if (_accessInfoPtr != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(_accessInfoPtr);
+            }
+
             if (_selfHandle.IsAllocated)
             {
                 _selfHandle.Free();
