@@ -37,8 +37,11 @@ public sealed class PdfiumRenderService : IPdfRenderService
     private const int PdfiumWorkerStackSizeBytes = 256 * 1024 * 1024;
 
     private static readonly object InitLock = new();
+    private static readonly BlockingCollection<Action> PdfiumWorkQueue = new();
+    private static readonly Thread PdfiumWorkerThread;
     private static readonly AsyncLocal<FileStream?> SaveStreamContext = new();
     private static bool _libraryInitialized;
+    private static int _pdfiumWorkerThreadId;
 
     // Phase 5 要件: ページキャッシュは最大 10 エントリの LRU とする。
     private const int MaxPageCacheEntries = 10;
@@ -58,6 +61,16 @@ public sealed class PdfiumRenderService : IPdfRenderService
     private readonly FormFillGetLocalTimeCallback _getLocalTimeCallback;
     private int _nextFormTimerId;
     private int _disposed;
+
+    static PdfiumRenderService()
+    {
+        PdfiumWorkerThread = new Thread(ProcessPdfiumQueue, PdfiumWorkerStackSizeBytes)
+        {
+            IsBackground = true,
+            Name = "pdfium-worker"
+        };
+        PdfiumWorkerThread.Start();
+    }
 
     /// <summary>
     /// <see cref="PdfiumRenderService"/> の新しいインスタンスを初期化します。
@@ -727,29 +740,32 @@ public sealed class PdfiumRenderService : IPdfRenderService
             return;
         }
 
-        foreach (var documentHandle in _openDocuments.Keys)
+        RunOnPdfiumThread(() =>
         {
-            CloseNativeDocument(documentHandle);
-        }
+            foreach (var documentHandle in _openDocuments.Keys.ToArray())
+            {
+                CloseNativeDocument(documentHandle);
+            }
 
-        foreach (var documentHandle in _formHandles.Keys.ToArray())
-        {
-            DestroyFormHandle(documentHandle);
-        }
+            foreach (var documentHandle in _formHandles.Keys.ToArray())
+            {
+                DestroyFormHandle(documentHandle);
+            }
 
-        foreach (var timerId in _formTimers.Keys.ToArray())
-        {
-            StopFormTimer(timerId);
-        }
+            foreach (var timerId in _formTimers.Keys.ToArray())
+            {
+                StopFormTimer(timerId);
+            }
 
-        ClearCache();
+            ClearCache();
 
-        foreach (var context in _documentLoadContexts.Values)
-        {
-            context.Dispose();
-        }
+            foreach (var context in _documentLoadContexts.Values)
+            {
+                context.Dispose();
+            }
 
-        _documentLoadContexts.Clear();
+            _documentLoadContexts.Clear();
+        }).GetAwaiter().GetResult();
     }
 
     /// <summary>
@@ -760,8 +776,20 @@ public sealed class PdfiumRenderService : IPdfRenderService
     /// </summary>
     private static Task<T> RunOnPdfiumThread<T>(Func<T> func)
     {
+        if (Environment.CurrentManagedThreadId == Volatile.Read(ref _pdfiumWorkerThreadId))
+        {
+            try
+            {
+                return Task.FromResult(func());
+            }
+            catch (Exception ex)
+            {
+                return Task.FromException<T>(ex);
+            }
+        }
+
         var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var thread = new Thread(() =>
+        PdfiumWorkQueue.Add(() =>
         {
             try
             {
@@ -771,11 +799,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
             {
                 tcs.SetException(ex);
             }
-        }, PdfiumWorkerStackSizeBytes)
-        {
-            IsBackground = true
-        };
-        thread.Start();
+        });
         return tcs.Task;
     }
 
@@ -784,8 +808,21 @@ public sealed class PdfiumRenderService : IPdfRenderService
     /// </summary>
     private static Task RunOnPdfiumThread(Action action)
     {
+        if (Environment.CurrentManagedThreadId == Volatile.Read(ref _pdfiumWorkerThreadId))
+        {
+            try
+            {
+                action();
+                return Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                return Task.FromException(ex);
+            }
+        }
+
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var thread = new Thread(() =>
+        PdfiumWorkQueue.Add(() =>
         {
             try
             {
@@ -796,12 +833,24 @@ public sealed class PdfiumRenderService : IPdfRenderService
             {
                 tcs.SetException(ex);
             }
-        }, PdfiumWorkerStackSizeBytes)
-        {
-            IsBackground = true
-        };
-        thread.Start();
+        });
         return tcs.Task;
+    }
+
+    private static void ProcessPdfiumQueue()
+    {
+        Volatile.Write(ref _pdfiumWorkerThreadId, Environment.CurrentManagedThreadId);
+        try
+        {
+            foreach (var action in PdfiumWorkQueue.GetConsumingEnumerable())
+            {
+                action();
+            }
+        }
+        finally
+        {
+            Volatile.Write(ref _pdfiumWorkerThreadId, 0);
+        }
     }
 
     private SKBitmap RenderPageInternal(PdfPage page, double dpi, bool useCache)
@@ -952,7 +1001,8 @@ public sealed class PdfiumRenderService : IPdfRenderService
 
         var formFillInfo = new FPDF_FORMFILLINFO
         {
-            version = 2
+            version = 2,
+            xfa_disabled = new IntPtr(1)
         };
         formFillInfo.Release = Marshal.GetFunctionPointerForDelegate(_releaseCallback);
         formFillInfo.FFI_SetTimer = Marshal.GetFunctionPointerForDelegate(_setTimerCallback);
@@ -1553,6 +1603,21 @@ public sealed class PdfiumRenderService : IPdfRenderService
         public IntPtr xfa_disabled;
         public IntPtr FFI_EmailTo;
         public IntPtr FFI_GetPlatform;
+        public IntPtr FFI_GetLanguage;
+        public IntPtr FFI_DownloadFromURL;
+        public IntPtr FFI_PostRequestURL;
+        public IntPtr FFI_PutRequestURL;
+        public IntPtr FFI_UploadTo;
+        public IntPtr FFI_GetStringFromFile;
+        public IntPtr FFI_DeleteFileParam;
+        public IntPtr FFI_SetStringToFile;
+        public IntPtr FFI_GotoURL;
+        public IntPtr FFI_GetFilePath;
+        public IntPtr FFI_Alert;
+        public IntPtr FFI_Print;
+        public IntPtr FFI_SubmitForm;
+        public IntPtr FFI_GotoPage;
+        public IntPtr FFI_Browse;
     }
 
     [StructLayout(LayoutKind.Sequential)]

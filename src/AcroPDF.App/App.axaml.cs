@@ -59,6 +59,7 @@ public partial class App : Application
 
             var mainWindow = ActivatorUtilities.CreateInstance<Views.MainWindow>(_serviceProvider);
             desktop.MainWindow = mainWindow;
+            desktop.Exit += (_, _) => _serviceProvider?.Dispose();
 
             var startupFile = desktop.Args?.FirstOrDefault(static path => !string.IsNullOrWhiteSpace(path));
             if (!string.IsNullOrWhiteSpace(startupFile))

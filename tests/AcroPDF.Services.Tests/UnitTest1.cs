@@ -220,6 +220,61 @@ public class PdfiumRenderServiceTests
         Assert.True(executed);
     }
 
+    [Fact]
+    public async Task RunOnPdfiumThread_UsesSingleWorkerThread()
+    {
+        var genericMethod = GetRunOnPdfiumThreadGeneric<int>();
+        var active = 0;
+        var maxActive = 0;
+
+        var tasks = Enumerable.Range(0, 8)
+            .Select(_ => (Task<int>)genericMethod.Invoke(null, [new Func<int>(() =>
+            {
+                var current = Interlocked.Increment(ref active);
+                var observed = Volatile.Read(ref maxActive);
+                while (current > observed)
+                {
+                    observed = Interlocked.CompareExchange(ref maxActive, current, observed);
+                }
+
+                Thread.Sleep(10);
+                Interlocked.Decrement(ref active);
+                return Environment.CurrentManagedThreadId;
+            })])!)
+            .ToArray();
+
+        var threadIds = await Task.WhenAll(tasks);
+        Assert.All(threadIds, id => Assert.Equal(threadIds[0], id));
+        Assert.Equal(1, Volatile.Read(ref maxActive));
+    }
+
+    [Fact]
+    public void FpdfFormFillInfo_ContainsXfaVersion2Fields()
+    {
+        var structType = typeof(PdfiumRenderService).GetNestedType("FPDF_FORMFILLINFO", BindingFlags.NonPublic);
+        Assert.NotNull(structType);
+
+        var fieldNames = structType!.GetFields(BindingFlags.Public | BindingFlags.Instance)
+            .Select(field => field.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Contains("FFI_GetLanguage", fieldNames);
+        Assert.Contains("FFI_DownloadFromURL", fieldNames);
+        Assert.Contains("FFI_PostRequestURL", fieldNames);
+        Assert.Contains("FFI_PutRequestURL", fieldNames);
+        Assert.Contains("FFI_UploadTo", fieldNames);
+        Assert.Contains("FFI_GetStringFromFile", fieldNames);
+        Assert.Contains("FFI_DeleteFileParam", fieldNames);
+        Assert.Contains("FFI_SetStringToFile", fieldNames);
+        Assert.Contains("FFI_GotoURL", fieldNames);
+        Assert.Contains("FFI_GetFilePath", fieldNames);
+        Assert.Contains("FFI_Alert", fieldNames);
+        Assert.Contains("FFI_Print", fieldNames);
+        Assert.Contains("FFI_SubmitForm", fieldNames);
+        Assert.Contains("FFI_GotoPage", fieldNames);
+        Assert.Contains("FFI_Browse", fieldNames);
+    }
+
     private static MethodInfo GetRunOnPdfiumThreadGeneric<T>()
     {
         return typeof(PdfiumRenderService).GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
