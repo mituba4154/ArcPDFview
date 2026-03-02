@@ -39,8 +39,8 @@ public abstract class SKGLControlView : Control
     {
         base.Render(context);
 
-        var width = Math.Max(1, (int)Bounds.Width);
-        var height = Math.Max(1, (int)Bounds.Height);
+        var width = Math.Max(1, (int)Math.Ceiling(Bounds.Width));
+        var height = Math.Max(1, (int)Math.Ceiling(Bounds.Height));
 
         if (_cachedFrame is null || _cachedFrame.PixelSize.Width != width || _cachedFrame.PixelSize.Height != height)
         {
