@@ -64,7 +64,7 @@ jobs:
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libx11-dev libice-dev libsm-dev libfontconfig1 libglib2.0-dev libnss3
+          sudo apt-get install -y libx11-dev libice-dev libsm-dev libfontconfig1 libglib2.0-dev libnss3 icoutils
 
       - name: Publish self-contained (linux-x64)
         run: dotnet publish src/AcroPDF.App/AcroPDF.App.csproj -c Release -r linux-x64 --self-contained -o publish/linux-x64
@@ -75,7 +75,11 @@ jobs:
           mkdir -p package-root/opt/arcpdfview
           mkdir -p package-root/usr/bin
           mkdir -p package-root/usr/share/applications
+          mkdir -p package-root/usr/share/icons/hicolor/256x256/apps
           cp -r publish/linux-x64/* package-root/opt/arcpdfview/
+          icotool -x icon.ico -o /tmp/arcpdfview-icon
+          cp "$(find /tmp/arcpdfview-icon -name '*.png' | sort | tail -n 1)" \
+            package-root/usr/share/icons/hicolor/256x256/apps/arcpdfview.png
           printf '#!/bin/bash\nexec /opt/arcpdfview/AcroPDF.App "$@"\n' \
             > package-root/usr/bin/arcpdfview
           chmod +x package-root/usr/bin/arcpdfview
@@ -89,7 +93,8 @@ jobs:
         run: |
           mkdir -p AppDir/usr/bin
           cp -r publish/linux-x64/* AppDir/usr/bin/
-          printf '[Desktop Entry]\nType=Application\nName=ArcPDFview\nExec=AcroPDF.App\nCategories=Office;\n' \
+          cp "$(find /tmp/arcpdfview-icon -name '*.png' | sort | tail -n 1)" AppDir/arcpdfview.png
+          printf '[Desktop Entry]\nType=Application\nName=ArcPDFview\nExec=AcroPDF.App\nIcon=arcpdfview\nCategories=Office;\n' \
             > AppDir/ArcPDFview.desktop
           printf '#!/usr/bin/env bash\nexec "$(dirname "$0")/usr/bin/AcroPDF.App" "$@"\n' \
             > AppDir/AppRun
