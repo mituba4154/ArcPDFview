@@ -38,6 +38,7 @@ public sealed class PdfiumRenderService : IPdfRenderService
 
     private static readonly object InitLock = new();
     private static readonly BlockingCollection<Action> PdfiumWorkQueue = new();
+    private static readonly Thread PdfiumWorkerThread;
     private static readonly AsyncLocal<FileStream?> SaveStreamContext = new();
     private static bool _libraryInitialized;
     private static int _pdfiumWorkerThreadId;
@@ -63,12 +64,12 @@ public sealed class PdfiumRenderService : IPdfRenderService
 
     static PdfiumRenderService()
     {
-        var workerThread = new Thread(ProcessPdfiumQueue, PdfiumWorkerStackSizeBytes)
+        PdfiumWorkerThread = new Thread(ProcessPdfiumQueue, PdfiumWorkerStackSizeBytes)
         {
             IsBackground = true,
             Name = "pdfium-worker"
         };
-        workerThread.Start();
+        PdfiumWorkerThread.Start();
     }
 
     /// <summary>
@@ -784,6 +785,11 @@ public sealed class PdfiumRenderService : IPdfRenderService
             }
         }
 
+        if (!PdfiumWorkerThread.IsAlive)
+        {
+            return Task.FromException<T>(new InvalidOperationException("PDFium worker thread is not running."));
+        }
+
         var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
         PdfiumWorkQueue.Add(() =>
         {
@@ -817,6 +823,11 @@ public sealed class PdfiumRenderService : IPdfRenderService
             }
         }
 
+        if (!PdfiumWorkerThread.IsAlive)
+        {
+            return Task.FromException(new InvalidOperationException("PDFium worker thread is not running."));
+        }
+
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         PdfiumWorkQueue.Add(() =>
         {
@@ -836,9 +847,16 @@ public sealed class PdfiumRenderService : IPdfRenderService
     private static void ProcessPdfiumQueue()
     {
         Volatile.Write(ref _pdfiumWorkerThreadId, Environment.CurrentManagedThreadId);
-        foreach (var action in PdfiumWorkQueue.GetConsumingEnumerable())
+        try
         {
-            action();
+            foreach (var action in PdfiumWorkQueue.GetConsumingEnumerable())
+            {
+                action();
+            }
+        }
+        finally
+        {
+            Volatile.Write(ref _pdfiumWorkerThreadId, 0);
         }
     }
 

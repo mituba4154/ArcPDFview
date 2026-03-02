@@ -224,13 +224,28 @@ public class PdfiumRenderServiceTests
     public async Task RunOnPdfiumThread_UsesSingleWorkerThread()
     {
         var genericMethod = GetRunOnPdfiumThreadGeneric<int>();
+        var active = 0;
+        var maxActive = 0;
 
-        var first = (Task<int>)genericMethod.Invoke(null, [new Func<int>(() => Environment.CurrentManagedThreadId)])!;
-        var second = (Task<int>)genericMethod.Invoke(null, [new Func<int>(() => Environment.CurrentManagedThreadId)])!;
+        var tasks = Enumerable.Range(0, 8)
+            .Select(_ => (Task<int>)genericMethod.Invoke(null, [new Func<int>(() =>
+            {
+                var current = Interlocked.Increment(ref active);
+                var observed = Volatile.Read(ref maxActive);
+                while (current > observed)
+                {
+                    observed = Interlocked.CompareExchange(ref maxActive, current, observed);
+                }
 
-        await Task.WhenAll(first, second);
+                Thread.Sleep(10);
+                Interlocked.Decrement(ref active);
+                return Environment.CurrentManagedThreadId;
+            })])!)
+            .ToArray();
 
-        Assert.Equal(first.Result, second.Result);
+        var threadIds = await Task.WhenAll(tasks);
+        Assert.All(threadIds, id => Assert.Equal(threadIds[0], id));
+        Assert.Equal(1, Volatile.Read(ref maxActive));
     }
 
     [Fact]
